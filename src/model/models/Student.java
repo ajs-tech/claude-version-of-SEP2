@@ -1,6 +1,5 @@
 package model.models;
 
-import javafx.beans.property.*;
 import model.enums.PerformanceTypeEnum;
 import model.util.PropertyChangeNotifier;
 import model.util.PropertyChangeSupport;
@@ -10,158 +9,134 @@ import java.util.Date;
 import java.util.Objects;
 
 /**
- * Repræsenterer en student i udlånssystemet.
- * Implementerer MVVM-kompatible properties for databinding.
+ * Represents a student in the loan system.
+ * Modified to use standard Java types instead of JavaFX properties.
  */
 public class Student implements PropertyChangeNotifier {
-    private final IntegerProperty viaId;
-    private final StringProperty name;
-    private final ObjectProperty<Date> degreeEndDate;
-    private final StringProperty degreeTitle;
-    private final StringProperty email;
-    private final IntegerProperty phoneNumber;
-    private final BooleanProperty hasLaptop;
-    private final ObjectProperty<PerformanceTypeEnum> performanceNeeded;
+    private int viaId;
+    private String name;
+    private Date degreeEndDate;
+    private String degreeTitle;
+    private String email;
+    private int phoneNumber;
+    private boolean hasLaptop;
+    private PerformanceTypeEnum performanceNeeded;
     private final PropertyChangeSupport changeSupport;
 
     /**
-     * Opretter en ny student.
+     * Creates a new student.
      *
-     * @param name              Studentens navn
-     * @param degreeEndDate     Slutdato for uddannelse
-     * @param degreeTitle       Uddannelsestitel
-     * @param viaId             Unikt VIA ID
-     * @param email             Email-adresse
-     * @param phoneNumber       Telefonnummer
-     * @param performanceNeeded Behov for laptoptypen (HIGH/LOW)
+     * @param name              Student's name
+     * @param degreeEndDate     End date for education
+     * @param degreeTitle       Education title
+     * @param viaId             Unique VIA ID
+     * @param email             Email address
+     * @param phoneNumber       Phone number
+     * @param performanceNeeded Laptop performance needs (HIGH/LOW)
      */
     public Student(String name, Date degreeEndDate, String degreeTitle, int viaId,
                    String email, int phoneNumber, PerformanceTypeEnum performanceNeeded) {
-        this.name = new SimpleStringProperty(this, "name", name);
-        this.degreeEndDate = new SimpleObjectProperty<>(this, "degreeEndDate", degreeEndDate);
-        this.degreeTitle = new SimpleStringProperty(this, "degreeTitle", degreeTitle);
-        this.viaId = new SimpleIntegerProperty(this, "viaId", viaId);
-        this.email = new SimpleStringProperty(this, "email", email);
-        this.phoneNumber = new SimpleIntegerProperty(this, "phoneNumber", phoneNumber);
-        this.hasLaptop = new SimpleBooleanProperty(this, "hasLaptop", false);
-        this.performanceNeeded = new SimpleObjectProperty<>(this, "performanceNeeded", performanceNeeded);
+        this.name = name;
+        this.degreeEndDate = degreeEndDate;
+        this.degreeTitle = degreeTitle;
+        this.viaId = viaId;
+        this.email = email;
+        this.phoneNumber = phoneNumber;
+        this.hasLaptop = false;
+        this.performanceNeeded = performanceNeeded;
         this.changeSupport = new PropertyChangeSupport(this);
-    }
-
-    // Property getters (for JavaFX binding)
-
-    public StringProperty nameProperty() {
-        return name;
-    }
-
-    public ObjectProperty<Date> degreeEndDateProperty() {
-        return degreeEndDate;
-    }
-
-    public StringProperty degreeTitleProperty() {
-        return degreeTitle;
-    }
-
-    public IntegerProperty viaIdProperty() {
-        return viaId;
-    }
-
-    public StringProperty emailProperty() {
-        return email;
-    }
-
-    public IntegerProperty phoneNumberProperty() {
-        return phoneNumber;
-    }
-
-    public BooleanProperty hasLaptopProperty() {
-        return hasLaptop;
-    }
-
-    public ObjectProperty<PerformanceTypeEnum> performanceNeededProperty() {
-        return performanceNeeded;
     }
 
     // Value getters
 
     public String getName() {
-        return name.get();
+        return name;
     }
 
     public Date getDegreeEndDate() {
-        return degreeEndDate.get();
+        return degreeEndDate;
     }
 
     public String getDegreeTitle() {
-        return degreeTitle.get();
+        return degreeTitle;
     }
 
     public int getViaId() {
-        return viaId.get();
+        return viaId;
     }
 
     public String getEmail() {
-        return email.get();
+        return email;
     }
 
     public int getPhoneNumber() {
-        return phoneNumber.get();
+        return phoneNumber;
     }
 
     public PerformanceTypeEnum getPerformanceNeeded() {
-        return performanceNeeded.get();
+        return performanceNeeded;
     }
 
     public boolean isHasLaptop() {
-        return hasLaptop.get();
+        return hasLaptop;
     }
 
     // Setters
 
     public void setName(String name) {
-        this.name.set(name);
+        String oldValue = this.name;
+        this.name = name;
+        firePropertyChange("name", oldValue, name);
     }
 
     public void setDegreeEndDate(Date degreeEndDate) {
-        this.degreeEndDate.set(degreeEndDate);
+        Date oldValue = this.degreeEndDate;
+        this.degreeEndDate = degreeEndDate;
+        firePropertyChange("degreeEndDate", oldValue, degreeEndDate);
     }
 
     public void setDegreeTitle(String degreeTitle) {
-        this.degreeTitle.set(degreeTitle);
+        String oldValue = this.degreeTitle;
+        this.degreeTitle = degreeTitle;
+        firePropertyChange("degreeTitle", oldValue, degreeTitle);
     }
 
     public void setEmail(String email) {
-        this.email.set(email);
+        String oldValue = this.email;
+        this.email = email;
+        firePropertyChange("email", oldValue, email);
     }
 
     public void setPhoneNumber(int phoneNumber) {
-        this.phoneNumber.set(phoneNumber);
+        int oldValue = this.phoneNumber;
+        this.phoneNumber = phoneNumber;
+        firePropertyChange("phoneNumber", oldValue, phoneNumber);
     }
 
     public void setPerformanceNeeded(PerformanceTypeEnum performanceNeeded) {
-        PerformanceTypeEnum oldValue = this.performanceNeeded.get();
-        this.performanceNeeded.set(performanceNeeded);
+        PerformanceTypeEnum oldValue = this.performanceNeeded;
+        this.performanceNeeded = performanceNeeded;
         firePropertyChange("performanceNeeded", oldValue, performanceNeeded);
     }
 
     /**
-     * Skifter hasLaptop-værdien til det modsatte og notificerer listeners.
+     * Toggles the hasLaptop value and notifies listeners.
      */
     public void setHasLaptopToOpposite() {
-        boolean oldValue = this.hasLaptop.get();
+        boolean oldValue = this.hasLaptop;
         boolean newValue = !oldValue;
-        this.hasLaptop.set(newValue);
+        this.hasLaptop = newValue;
         firePropertyChange("hasLaptop", oldValue, newValue);
     }
 
     /**
-     * Sætter hasLaptop-værdien direkte.
+     * Sets the hasLaptop value directly.
      *
-     * @param hasLaptop Den nye værdi
+     * @param hasLaptop The new value
      */
     public void setHasLaptop(boolean hasLaptop) {
-        boolean oldValue = this.hasLaptop.get();
-        this.hasLaptop.set(hasLaptop);
+        boolean oldValue = this.hasLaptop;
+        this.hasLaptop = hasLaptop;
         firePropertyChange("hasLaptop", oldValue, hasLaptop);
     }
 
@@ -193,7 +168,7 @@ public class Student implements PropertyChangeNotifier {
 
     @Override
     public String toString() {
-        return name.get() + " (VIA ID: " + viaId.get() + ")";
+        return name + " (VIA ID: " + viaId + ")";
     }
 
     @Override
@@ -201,11 +176,11 @@ public class Student implements PropertyChangeNotifier {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Student student = (Student) o;
-        return viaId.get() == student.viaId.get();
+        return viaId == student.viaId;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(viaId.get());
+        return Objects.hash(viaId);
     }
 }

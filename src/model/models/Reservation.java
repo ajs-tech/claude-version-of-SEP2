@@ -1,7 +1,5 @@
 package model.models;
 
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.SimpleObjectProperty;
 import model.enums.ReservationStatusEnum;
 import model.util.PropertyChangeNotifier;
 import model.util.PropertyChangeSupport;
@@ -12,143 +10,121 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Repræsenterer en reservation i udlånssystemet.
- * Implementerer MVVM-kompatible properties for databinding.
+ * Represents a reservation in the loan system.
+ * Modified to use standard Java types instead of JavaFX properties.
  */
 public class Reservation implements PropertyChangeNotifier {
-    private final ObjectProperty<UUID> reservationId;
-    private final ObjectProperty<Student> student;
-    private final ObjectProperty<Laptop> laptop;
-    private final ObjectProperty<ReservationStatusEnum> status;
-    private final ObjectProperty<Date> creationDate;
+    private UUID reservationId;
+    private Student student;
+    private Laptop laptop;
+    private ReservationStatusEnum status;
+    private Date creationDate;
     private final PropertyChangeSupport changeSupport;
 
     /**
-     * Konstruktør til oprettelse af en ny reservation med automatisk genereret UUID.
+     * Constructor for creating a new reservation with automatically generated UUID.
      *
-     * @param student Studenten, der låner laptopen
-     * @param laptop  Laptopen, der udlånes
+     * @param student The student borrowing the laptop
+     * @param laptop  The laptop being loaned
      */
     public Reservation(Student student, Laptop laptop) {
         this(UUID.randomUUID(), student, laptop, ReservationStatusEnum.ACTIVE, new Date());
     }
 
     /**
-     * Konstruktør til oprettelse af en reservation med specifikt UUID og status.
-     * Bruges ved indlæsning fra databasen.
+     * Constructor for creating a reservation with specific UUID and status.
+     * Used when loading from database.
      *
-     * @param reservationId Reservationens unikke ID
-     * @param student       Studenten, der låner laptopen
-     * @param laptop        Laptopen, der udlånes
-     * @param status        Reservationens status
-     * @param creationDate  Dato for oprettelse af reservationen
+     * @param reservationId Reservation's unique ID
+     * @param student       The student borrowing the laptop
+     * @param laptop        The laptop being loaned
+     * @param status        Reservation status
+     * @param creationDate  Date of reservation creation
      */
     public Reservation(UUID reservationId, Student student, Laptop laptop,
                        ReservationStatusEnum status, Date creationDate) {
-        this.reservationId = new SimpleObjectProperty<>(this, "reservationId", reservationId);
-        this.student = new SimpleObjectProperty<>(this, "student", student);
-        this.laptop = new SimpleObjectProperty<>(this, "laptop", laptop);
-        this.status = new SimpleObjectProperty<>(this, "status", status);
-        this.creationDate = new SimpleObjectProperty<>(this, "creationDate", creationDate);
+        this.reservationId = reservationId;
+        this.student = student;
+        this.laptop = laptop;
+        this.status = status;
+        this.creationDate = creationDate;
         this.changeSupport = new PropertyChangeSupport(this);
     }
 
     /**
-     * Konstruktør til oprettelse af en reservation med specifikt UUID og status.
-     * Bruger nuværende dato for oprettelse.
+     * Constructor for creating a reservation with specific UUID and status.
+     * Uses current date for creation.
      *
-     * @param reservationId Reservationens unikke ID
-     * @param student       Studenten, der låner laptopen
-     * @param laptop        Laptopen, der udlånes
-     * @param status        Reservationens status
+     * @param reservationId Reservation's unique ID
+     * @param student       The student borrowing the laptop
+     * @param laptop        The laptop being loaned
+     * @param status        Reservation status
      */
     public Reservation(UUID reservationId, Student student, Laptop laptop, ReservationStatusEnum status) {
         this(reservationId, student, laptop, status, new Date());
     }
 
-    // Property getters (for JavaFX binding)
+    // Getters
 
-    public ObjectProperty<UUID> reservationIdProperty() {
+    public UUID getReservationId() {
         return reservationId;
     }
 
-    public ObjectProperty<Student> studentProperty() {
+    public Student getStudent() {
         return student;
     }
 
-    public ObjectProperty<Laptop> laptopProperty() {
-        return laptop;
-    }
-
-    public ObjectProperty<ReservationStatusEnum> statusProperty() {
-        return status;
-    }
-
-    public ObjectProperty<Date> creationDateProperty() {
-        return creationDate;
-    }
-
-    // Value getters
-
-    public UUID getReservationId() {
-        return reservationId.get();
-    }
-
-    public Student getStudent() {
-        return student.get();
-    }
-
     public String getStudentDetailsString() {
-        return student.get().toString();
+        return student.toString();
     }
 
     public Laptop getLaptop() {
-        return laptop.get();
+        return laptop;
     }
 
     public String getLaptopDetailsString() {
-        return laptop.get().toString();
+        return laptop.toString();
     }
 
     public ReservationStatusEnum getStatus() {
-        return status.get();
+        return status;
     }
 
     public Date getCreationDate() {
-        return creationDate.get();
+        return creationDate;
     }
 
     /**
-     * Ændrer reservationens status.
-     * Hvis en aktiv reservation afsluttes (COMPLETED eller CANCELLED),
-     * frigives den tilknyttede laptop og opdaterer studentens hasLaptop status.
+     * Changes the reservation status.
+     * If an active reservation is completed (COMPLETED or CANCELLED),
+     * the associated laptop is released and the student's hasLaptop status is updated.
      *
-     * @param newStatus Den nye status for reservationen
+     * @param newStatus The new status for the reservation
      */
     public void changeStatus(ReservationStatusEnum newStatus) {
-        ReservationStatusEnum oldStatus = this.status.get();
-        this.status.set(newStatus);
+        ReservationStatusEnum oldStatus = this.status;
+        this.status = newStatus;
 
-        // Notificér om statusændringen
+        // Notify about status change
         firePropertyChange("status", oldStatus, newStatus);
 
-        // Hvis en reservation afsluttes, opdater laptop og student tilstand
+        // If a reservation is completed, update laptop and student state
         if (oldStatus == ReservationStatusEnum.ACTIVE &&
                 (newStatus == ReservationStatusEnum.COMPLETED || newStatus == ReservationStatusEnum.CANCELLED)) {
 
-            // Gør laptopen tilgængelig igen
-            Laptop reservedLaptop = laptop.get();
+            // Make laptop available again
+            Laptop reservedLaptop = laptop;
             if (reservedLaptop.isLoaned()) {
                 reservedLaptop.changeState(AvailableState.INSTANCE);
             }
 
-            // Opdater student har laptop status hvis nødvendigt
-            Student reservedStudent = student.get();
+            // Update student has laptop status if necessary
+            Student reservedStudent = student;
             if (reservedStudent.isHasLaptop()) {
                 reservedStudent.setHasLaptopToOpposite();
             }
 
-            // Notificér om at reservationen er afsluttet
+            // Notify that the reservation is completed
             firePropertyChange("completed", false, true);
         }
     }
@@ -181,8 +157,8 @@ public class Reservation implements PropertyChangeNotifier {
 
     @Override
     public String toString() {
-        return "Reservation: " + student.get().getName() + " - " +
-                laptop.get().getModel() + " (" + status.get() + ")";
+        return "Reservation: " + student.getName() + " - " +
+                laptop.getModel() + " (" + status + ")";
     }
 
     @Override
@@ -190,11 +166,11 @@ public class Reservation implements PropertyChangeNotifier {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Reservation that = (Reservation) o;
-        return Objects.equals(reservationId.get(), that.reservationId.get());
+        return Objects.equals(reservationId, that.reservationId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(reservationId.get());
+        return Objects.hash(reservationId);
     }
 }
