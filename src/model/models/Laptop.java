@@ -1,111 +1,85 @@
 package model.models;
 
-import javafx.beans.property.*;
 import model.enums.PerformanceTypeEnum;
 import model.util.PropertyChangeNotifier;
+import model.util.PropertyChangeSupport;
 
 import java.beans.PropertyChangeListener;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Repræsenterer en laptop i udlånssystemet.
- * Implementerer MVVM-kompatible properties for databinding.
+ * Represents a laptop in the loan system.
+ * Modified to use standard Java types instead of JavaFX properties.
  */
 public class Laptop implements PropertyChangeNotifier {
-    private final ObjectProperty<UUID> id;
-    private final StringProperty brand;
-    private final StringProperty model;
-    private final IntegerProperty gigabyte;
-    private final IntegerProperty ram;
-    private final ObjectProperty<PerformanceTypeEnum> performanceType;
+    private UUID id;
+    private String brand;
+    private String model;
+    private int gigabyte;
+    private int ram;
+    private PerformanceTypeEnum performanceType;
     private LaptopState state;
     private final PropertyChangeSupport changeSupport;
 
     /**
-     * Konstruktør til oprettelse af en ny laptop med et tilfældigt UUID
+     * Constructor for creating a new laptop with a random UUID
      *
-     * @param brand            Laptopens mærke
-     * @param model            Laptopens model
-     * @param gigabyte         Harddiskkapacitet i GB
-     * @param ram              RAM i GB
-     * @param performanceType  Ydelseskategori (HIGH/LOW)
+     * @param brand            Laptop brand
+     * @param model            Laptop model
+     * @param gigabyte         Hard disk capacity in GB
+     * @param ram              RAM in GB
+     * @param performanceType  Performance category (HIGH/LOW)
      */
     public Laptop(String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType) {
         this(UUID.randomUUID(), brand, model, gigabyte, ram, performanceType);
     }
 
     /**
-     * Konstruktør til oprettelse af en laptop med et specifikt UUID (bruges ved indlæsning fra database)
+     * Constructor for creating a laptop with a specific UUID (used when loading from database)
      *
-     * @param id               Unikt ID (UUID)
-     * @param brand            Laptopens mærke
-     * @param model            Laptopens model
-     * @param gigabyte         Harddiskkapacitet i GB
-     * @param ram              RAM i GB
-     * @param performanceType  Ydelseskategori (HIGH/LOW)
+     * @param id               Unique ID (UUID)
+     * @param brand            Laptop brand
+     * @param model            Laptop model
+     * @param gigabyte         Hard disk capacity in GB
+     * @param ram              RAM in GB
+     * @param performanceType  Performance category (HIGH/LOW)
      */
     public Laptop(UUID id, String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType) {
-        this.id = new SimpleObjectProperty<>(this, "id", id);
-        this.brand = new SimpleStringProperty(this, "brand", brand);
-        this.model = new SimpleStringProperty(this, "model", model);
-        this.gigabyte = new SimpleIntegerProperty(this, "gigabyte", gigabyte);
-        this.ram = new SimpleIntegerProperty(this, "ram", ram);
-        this.performanceType = new SimpleObjectProperty<>(this, "performanceType", performanceType);
+        this.id = id;
+        this.brand = brand;
+        this.model = model;
+        this.gigabyte = gigabyte;
+        this.ram = ram;
+        this.performanceType = performanceType;
         this.state = new AvailableState();
         this.changeSupport = new PropertyChangeSupport(this);
     }
 
-    // Getters for properties (for JavaFX binding)
+    // Getters
 
-    public ObjectProperty<UUID> idProperty() {
+    public UUID getId() {
         return id;
     }
 
-    public StringProperty brandProperty() {
+    public String getBrand() {
         return brand;
     }
 
-    public StringProperty modelProperty() {
+    public String getModel() {
         return model;
     }
 
-    public IntegerProperty gigabyteProperty() {
+    public int getGigabyte() {
         return gigabyte;
     }
 
-    public IntegerProperty ramProperty() {
+    public int getRam() {
         return ram;
     }
 
-    public ObjectProperty<PerformanceTypeEnum> performanceTypeProperty() {
-        return performanceType;
-    }
-
-    // Getters for values
-
-    public UUID getId() {
-        return id.get();
-    }
-
-    public String getBrand() {
-        return brand.get();
-    }
-
-    public String getModel() {
-        return model.get();
-    }
-
-    public int getGigabyte() {
-        return gigabyte.get();
-    }
-
-    public int getRam() {
-        return ram.get();
-    }
-
     public PerformanceTypeEnum getPerformanceType() {
-        return performanceType.get();
+        return performanceType;
     }
 
     public LaptopState getState() {
@@ -115,49 +89,63 @@ public class Laptop implements PropertyChangeNotifier {
     // Setters
 
     public void setBrand(String brand) {
-        this.brand.set(brand);
+        String oldValue = this.brand;
+        this.brand = brand;
+        firePropertyChange("brand", oldValue, brand);
     }
 
     public void setModel(String model) {
-        this.model.set(model);
+        String oldValue = this.model;
+        this.model = model;
+        firePropertyChange("model", oldValue, model);
     }
 
     public void setGigabyte(int gigabyte) {
-        this.gigabyte.set(gigabyte);
+        int oldValue = this.gigabyte;
+        this.gigabyte = gigabyte;
+        firePropertyChange("gigabyte", oldValue, gigabyte);
     }
 
     public void setRam(int ram) {
-        this.ram.set(ram);
+        int oldValue = this.ram;
+        this.ram = ram;
+        firePropertyChange("ram", oldValue, ram);
+    }
+
+    public void setPerformanceType(PerformanceTypeEnum performanceType) {
+        PerformanceTypeEnum oldValue = this.performanceType;
+        this.performanceType = performanceType;
+        firePropertyChange("performanceType", oldValue, performanceType);
     }
 
     /**
-     * Henter statens klassenavn til brug for databasen
+     * Gets the state class name for use with the database
      */
     public String getStateClassName() {
         return state.getClass().getSimpleName();
     }
 
     /**
-     * Tjekker om laptopen er tilgængelig
-     * @return true hvis laptopen er i Available tilstand
+     * Checks if laptop is available
+     * @return true if laptop is in Available state
      */
     public boolean isAvailable() {
         return state instanceof AvailableState;
     }
 
     /**
-     * Tjekker om laptopen er udlånt
-     * @return true hvis laptopen er i Loaned tilstand
+     * Checks if laptop is loaned
+     * @return true if laptop is in Loaned state
      */
     public boolean isLoaned() {
         return state instanceof LoanedState;
     }
 
     /**
-     * Ændrer laptopens tilstand
-     * Notificerer observere når tilstanden ændres til Available
+     * Changes the laptop's state
+     * Notifies observers when state changes to Available
      *
-     * @param newState Den nye tilstand
+     * @param newState The new state
      */
     public void changeState(LaptopState newState) {
         LaptopState oldState = this.state;
@@ -165,11 +153,11 @@ public class Laptop implements PropertyChangeNotifier {
         this.state = newState;
         String newStateName = this.getStateClassName();
 
-        // Notificér alle lyttere om state-ændringen
+        // Notify all listeners about state change
         firePropertyChange("state", oldState, newState);
         firePropertyChange("stateClassName", oldStateName, newStateName);
 
-        // Specifik event når laptop bliver tilgængelig
+        // Specific event when laptop becomes available
         if (newState instanceof AvailableState) {
             firePropertyChange("available", false, true);
         } else if (oldState instanceof AvailableState) {
@@ -178,8 +166,8 @@ public class Laptop implements PropertyChangeNotifier {
     }
 
     /**
-     * Sætter laptoppens tilstand baseret på klassens navn fra databasen
-     * @param stateName navnet på tilstandsklassen (fx "AvailableState" eller "LoanedState")
+     * Sets the laptop state based on the class name from the database
+     * @param stateName name of the state class (e.g. "AvailableState" or "LoanedState")
      */
     public void setStateFromDatabase(String stateName) {
         if ("LoanedState".equals(stateName)) {
@@ -221,7 +209,7 @@ public class Laptop implements PropertyChangeNotifier {
 
     @Override
     public String toString() {
-        return brand.get() + " " + model.get() + " (" + performanceType.get() + ")";
+        return brand + " " + model + " (" + performanceType + ")";
     }
 
     @Override
@@ -229,11 +217,11 @@ public class Laptop implements PropertyChangeNotifier {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Laptop laptop = (Laptop) o;
-        return Objects.equals(id.get(), laptop.id.get());
+        return Objects.equals(id, laptop.id);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id.get());
+        return Objects.hash(id);
     }
 }

@@ -15,6 +15,7 @@ import java.util.Queue;
 /**
  * Generic implementering af kø-system for studerende.
  * Erstatter de separate queue-klasser med én implementering der kan håndtere begge køer.
+ * Implementerer ren Java uden JavaFX-afhængigheder.
  */
 public class GenericQueue implements PropertyChangeNotifier {
     private final Queue<Student> queue;
