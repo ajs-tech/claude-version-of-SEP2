@@ -5,6 +5,9 @@ import model.events.SystemEvents;
 import model.log.Log;
 import model.util.EventBus;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
@@ -14,7 +17,7 @@ import java.util.logging.Logger;
 
 /**
  * Singleton klasse til at håndtere database forbindelser med connection pool.
- * Har forbedret robust fejlhåndtering og overvågning af forbindelser.
+ * Opdateret til at arbejde med Neon PostgreSQL.
  */
 public class DatabaseConnection {
     private static final Logger logger = Logger.getLogger(DatabaseConnection.class.getName());
@@ -26,22 +29,19 @@ public class DatabaseConnection {
     private static boolean initialized = false;
     private static boolean poolClosed = false;
 
-    // Database configuration
-    private static final String DEFAULT_DB_DRIVER = "org.postgresql.Driver";
-    private static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/postgres";
-    private static final String DEFAULT_DB_USER = "postgres";
-    private static final String DEFAULT_DB_PASSWORD = "Seshej1991";
+    // Sti til konfigurationsfilen
+    private static final String CONFIG_FILE = "/Users/ajs/IdeaProjects/claude-version/src/main/resources/config/database.properties";
 
-    // Connection statistics
+    // Forbindelsesstatistik
     private static final AtomicInteger connectionCounter = new AtomicInteger(0);
     private static final AtomicInteger failedConnectionCounter = new AtomicInteger(0);
 
-    // Maximum retry attempts
+    // Maksimalt antal genforsøg
     private static final int MAX_RETRY_ATTEMPTS = 3;
 
     static {
         try {
-            // Initialize connection pool
+            // Initialiser connection pool
             initializeConnectionPool();
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Fejl ved initialisering af database forbindelsespool", e);
@@ -56,7 +56,7 @@ public class DatabaseConnection {
     }
 
     /**
-     * Initialiserer forbindelsespoolen med standardværdier eller konfiguration fra properties.
+     * Initialiserer forbindelsespoolen med værdier fra properties-fil eller standardværdier.
      */
     private static void initializeConnectionPool() {
         if (initialized && !poolClosed) {
@@ -64,50 +64,63 @@ public class DatabaseConnection {
         }
 
         try {
-            // Create a new connection pool
+            // Opret en ny connection pool
             cpds = new ComboPooledDataSource();
 
-            // Set database driver
-            cpds.setDriverClass(getDbProperty("db.driver", DEFAULT_DB_DRIVER));
+            // Indlæs konfiguration fra properties-fil
+            Properties dbProps = loadDatabaseProperties();
 
-            // Set database connection info
-            cpds.setJdbcUrl(getDbProperty("db.url", DEFAULT_DB_URL));
-            cpds.setUser(getDbProperty("db.user", DEFAULT_DB_USER));
-            cpds.setPassword(getDbProperty("db.password", DEFAULT_DB_PASSWORD));
+            // Sæt database driver
+            cpds.setDriverClass(dbProps.getProperty("db.driver"));
 
-            // Configure pool size
-            cpds.setInitialPoolSize(5);
-            cpds.setMinPoolSize(5);
-            cpds.setMaxPoolSize(20);
-            cpds.setAcquireIncrement(5);
+            // Sæt database connection info
+            cpds.setJdbcUrl(dbProps.getProperty("db.url"));
+            cpds.setUser(dbProps.getProperty("db.user"));
+            cpds.setPassword(dbProps.getProperty("db.password"));
 
-            // Configure statement caching
-            cpds.setMaxStatements(100);
+            // Konfigurer pool-størrelse
+            cpds.setInitialPoolSize(3);  // Start med færre forbindelser for serverless
+            cpds.setMinPoolSize(1);      // Minimum kan være lavere for serverless
+            cpds.setMaxPoolSize(10);     // Begræns max forbindelser for serverless
+            cpds.setAcquireIncrement(1); // Forøg med 1 ad gangen
 
-            // Configure connection testing
-            cpds.setIdleConnectionTestPeriod(300);
-            cpds.setTestConnectionOnCheckout(false);
-            cpds.setTestConnectionOnCheckin(true);
+            // Konfigurer statement caching
+            cpds.setMaxStatements(50);
 
-            // Configure timeouts
-            cpds.setCheckoutTimeout(10000); // 10 seconds timeout for connection checkout
-            cpds.setMaxIdleTime(1800);      // 30 minutes max idle time
-            cpds.setMaxConnectionAge(14400); // 4 hours max connection age
+            // Konfigurer forbindelsestest - vigtigt for serverless
+            cpds.setIdleConnectionTestPeriod(60);  // Test inaktive forbindelser hvert minut
+            cpds.setTestConnectionOnCheckout(true); // Test ved hentning af forbindelse
+            cpds.setTestConnectionOnCheckin(true);  // Test ved returnering af forbindelse
 
-            // Configure automatic connection testing
+            // Konfigurer timeouts - kortere for serverless
+            cpds.setCheckoutTimeout(20000);  // 20 sekunder timeout for forbindelseshentning
+            cpds.setMaxIdleTime(300);        // 5 minutter max inaktivitetstid
+            cpds.setMaxConnectionAge(1800);  // 30 minutter max forbindelsesalder
+
+            // Konfigurer automatisk forbindelsestest
             cpds.setPreferredTestQuery("SELECT 1");
 
-            // Configure retry settings
-            cpds.setAcquireRetryAttempts(3);
-            cpds.setAcquireRetryDelay(1000); // 1 second between retries
+            // Konfigurer retry-indstillinger
+            cpds.setAcquireRetryAttempts(5);    // Flere forsøg for serverless
+            cpds.setAcquireRetryDelay(500);     // Et halvt sekund mellem forsøg
+
+            // Aktivér forbindelses-reset ved lukning
+            cpds.setAutoCommitOnClose(true);
+
+            // Tilføj forbindelsesegenskaber specifikt for Neon
+            // I initializeConnectionPool-metoden
+            Properties properties = new Properties();
+            properties.setProperty("user", dbProps.getProperty("db.user"));
+            properties.setProperty("password", dbProps.getProperty("db.password"));
+            cpds.setProperties(properties);
 
             initialized = true;
             poolClosed = false;
 
-            logger.info("Database forbindelsespool initialiseret");
-            log.info("Database forbindelsespool initialiseret");
+            logger.info("Database forbindelsespool initialiseret med Neon PostgreSQL");
+            log.info("Database forbindelsespool initialiseret med Neon PostgreSQL");
 
-            // Reset counters
+            // Nulstil tællere
             connectionCounter.set(0);
             failedConnectionCounter.set(0);
 
@@ -126,39 +139,40 @@ public class DatabaseConnection {
     }
 
     /**
-     * Henter en databaseindstilling fra system properties eller environment variables.
+     * Indlæser database-egenskaber fra konfigurationsfilen.
      *
-     * @param key          Property nøgle
-     * @param defaultValue Standardværdi
-     * @return Indstillingens værdi
+     * @return Properties-objekt med databasekonfiguration
      */
-    private static String getDbProperty(String key, String defaultValue) {
-        // Check system properties
-        String value = System.getProperty(key);
-        if (value != null && !value.trim().isEmpty()) {
-            return value;
-        }
+    private static Properties loadDatabaseProperties() {
+        Properties properties = new Properties();
+        try {
+            // Først forsøg med ClassLoader for at finde filen i classpath
+            InputStream inputStream = DatabaseConnection.class.getClassLoader().getResourceAsStream(CONFIG_FILE);
 
-        // Check environment variables (convert db.url to DB_URL)
-        String envKey = key.toUpperCase().replace('.', '_');
-        value = System.getenv(envKey);
-        if (value != null && !value.trim().isEmpty()) {
-            return value;
-        }
+            // Hvis ikke fundet i classpath, prøv med FileInputStream
+            if (inputStream == null) {
+                inputStream = new FileInputStream(CONFIG_FILE);
+            }
 
-        // Return default value
-        return defaultValue;
+            properties.load(inputStream);
+            inputStream.close();
+            logger.info("Indlæst databasekonfiguration fra " + CONFIG_FILE);
+        } catch (IOException e) {
+            logger.warning("Kunne ikke indlæse database.properties: " + e.getMessage());
+            // Fortsæt uden konfiguration - vil fejle senere med bedre fejlbesked
+        }
+        return properties;
     }
 
     /**
      * Privat konstruktør for singleton pattern
      */
     private DatabaseConnection() {
-        // Private constructor - can't be instantiated
+        // Private konstruktør - kan ikke instantieres
     }
 
     /**
-     * Henter en forbindelse fra poolen med retry mekanisme.
+     * Henter en forbindelse fra poolen med retry-mekanisme.
      *
      * @return Database forbindelse
      * @throws SQLException hvis der er problemer med at etablere forbindelsen
@@ -182,7 +196,7 @@ public class DatabaseConnection {
                 // Log connection checkout
                 connectionCounter.incrementAndGet();
 
-                // Log connection retrieval at high debug level
+                // Log forbindelseshentning på højt debug-niveau
                 if (logger.isLoggable(Level.FINE)) {
                     logger.fine("Database forbindelse hentet fra pool (total: " +
                             connectionCounter.get() + ")");
@@ -199,8 +213,8 @@ public class DatabaseConnection {
 
                 if (attempts < MAX_RETRY_ATTEMPTS) {
                     try {
-                        // Wait before retrying
-                        Thread.sleep(1000 * attempts); // Increasing delay between retries
+                        // Vent før næste forsøg - længere for serverless pga. potentielle cold starts
+                        Thread.sleep(1000 * attempts); // Stigende forsinkelse mellem forsøg
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         break;
@@ -209,11 +223,11 @@ public class DatabaseConnection {
             }
         }
 
-        // Log pool status on failure
+        // Log pool-status ved fejl
         logPoolStatus();
 
-        // If we get here, all attempts failed
-        String errorMsg = "Kunne ikke oprette databaseforbindelse efter " +
+        // Hvis vi når hertil, er alle forsøg mislykkedes
+        String errorMsg = "Kunne ikke etablere databaseforbindelse efter " +
                 MAX_RETRY_ATTEMPTS + " forsøg";
 
         log.error(errorMsg + ": " +
@@ -237,15 +251,15 @@ public class DatabaseConnection {
             logger.info("Lukker database forbindelsespool");
             log.info("Lukker database forbindelsespool");
 
-            // Close the pool
+            // Luk poolen
             cpds.close();
 
             poolClosed = true;
             initialized = false;
 
-            // Log final connection statistics
-            logger.info("Total connections created: " + connectionCounter.get());
-            logger.info("Total failed connection attempts: " + failedConnectionCounter.get());
+            // Log endelige forbindelsesstatistikker
+            logger.info("Total antal forbindelser oprettet: " + connectionCounter.get());
+            logger.info("Total antal mislykkede forbindelsesforsøg: " + failedConnectionCounter.get());
         }
     }
 
@@ -267,18 +281,18 @@ public class DatabaseConnection {
     /**
      * Henter statistik om connection pool status.
      *
-     * @return String med pool statistik
+     * @return String med pool-statistik
      */
     public static String getPoolStats() {
         try {
             StringBuilder stats = new StringBuilder();
             stats.append("Database Connection Pool Status:\n");
-            stats.append("  Connections in use: ").append(cpds.getNumBusyConnections()).append("\n");
-            stats.append("  Idle connections: ").append(cpds.getNumIdleConnections()).append("\n");
-            stats.append("  Total connections: ").append(cpds.getNumConnections()).append("\n");
-            stats.append("  Threads waiting: ").append(cpds.getThreadPoolNumActiveThreads()).append("\n");
-            stats.append("  Total created: ").append(connectionCounter.get()).append("\n");
-            stats.append("  Total failed attempts: ").append(failedConnectionCounter.get());
+            stats.append("  Forbindelser i brug: ").append(cpds.getNumBusyConnections()).append("\n");
+            stats.append("  Inaktive forbindelser: ").append(cpds.getNumIdleConnections()).append("\n");
+            stats.append("  Total forbindelser: ").append(cpds.getNumConnections()).append("\n");
+            stats.append("  Ventende tråde: ").append(cpds.getThreadPoolNumActiveThreads()).append("\n");
+            stats.append("  Total oprettet: ").append(connectionCounter.get()).append("\n");
+            stats.append("  Total mislykkede forsøg: ").append(failedConnectionCounter.get());
             return stats.toString();
         } catch (SQLException e) {
             logger.log(Level.WARNING, "Fejl ved hentning af pool statistik", e);
@@ -306,16 +320,16 @@ public class DatabaseConnection {
         log.warning("Geninitialiserer database forbindelsespool");
 
         try {
-            // Close the current pool
+            // Luk den nuværende pool
             if (cpds != null && !poolClosed) {
                 cpds.close();
                 poolClosed = true;
             }
 
-            // Reset for new initialization
+            // Nulstil for ny initialisering
             initialized = false;
 
-            // Create a new pool
+            // Opret en ny pool
             initializeConnectionPool();
 
             logger.info("Database forbindelsespool geninitialiseret succesfuldt");

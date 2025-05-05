@@ -52,7 +52,7 @@ public class QueueDAO {
             boolean success = affectedRows > 0;
             if (success) {
                 log.info("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
-                        "] tilføjet til " + performanceType.getDisplayName() + "-ydelses kø");
+                        "] tilføjet til " + performanceType.getClass().getSimpleName() + "-ydelses kø");
 
                 // Post event
                 int newQueueSize = getQueueSize(performanceType);
@@ -128,7 +128,7 @@ public class QueueDAO {
             boolean success = affectedRows > 0;
             if (success) {
                 log.info("Student [" + student.getName() + ", VIA ID: " + studentViaId +
-                        "] fjernet fra " + performanceType.getDisplayName() + "-ydelses kø");
+                        "] fjernet fra " + performanceType.getClass().getSimpleName() + "-ydelses kø");
 
                 // Post event - vi antager ikke laptop tildeling her, det håndteres separat
                 int newQueueSize = getQueueSize(performanceType);
@@ -237,7 +237,7 @@ public class QueueDAO {
                 }
 
                 log.info("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
-                        "] hentet og fjernet fra " + performanceType.getDisplayName() + "-ydelses kø");
+                        "] hentet og fjernet fra " + performanceType.getClass().getSimpleName() + "-ydelses kø");
 
                 // Event for fjernelse - laptop tildeling vil ske separat
                 int newQueueSize = getQueueSize(performanceType);
@@ -398,7 +398,7 @@ public class QueueDAO {
             int affectedRows = stmt.executeUpdate();
 
             if (affectedRows > 0) {
-                log.info("Ryddet " + performanceType.getDisplayName() + "-ydelses kø: " +
+                log.info("Ryddet " + performanceType.getClass().getSimpleName() + "-ydelses kø: " +
                         affectedRows + " studerende fjernet");
 
                 // Post events for hver student

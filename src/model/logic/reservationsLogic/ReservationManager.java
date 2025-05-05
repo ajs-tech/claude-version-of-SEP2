@@ -83,7 +83,7 @@ public class ReservationManager implements PropertyChangeListener, PropertyChang
      * Indlæs aktive reservationer fra databasen ved opstart
      */
     private void loadReservationsFromDatabase() throws SQLException {
-        List<Reservation> dbReservations = reservationDAO.getAllReservations();
+        List<Reservation> dbReservations = reservationDAO.getAll();
         int count = 0;
 
         for (Reservation reservation : dbReservations) {
@@ -530,7 +530,7 @@ public class ReservationManager implements PropertyChangeListener, PropertyChang
      */
     public int getAmountOfReservationsToDate() {
         try {
-            return reservationDAO.getAllReservations().size();
+            return reservationDAO.getAll().size();
         } catch (SQLException e) {
             logger.log(Level.WARNING, "Fejl ved hentning af alle reservationer: " + e.getMessage(), e);
             // Returner in-memory størrelse som fallback

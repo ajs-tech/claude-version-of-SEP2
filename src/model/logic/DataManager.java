@@ -87,11 +87,11 @@ public class DataManager implements PropertyChangeListener, PropertyChangeNotifi
         try {
             // Laptop cache
             laptopCache.clear();
-            laptopCache.addAll(laptopDAO.getAllLaptops());
+            laptopCache.addAll(laptopDAO.getAll());
 
             // Student cache
             studentCache.clear();
-            studentCache.addAll(studentDAO.getAllStudents());
+            studentCache.addAll(studentDAO.getAll());
 
             // Notificér om opdateringer
             firePropertyChange("laptopsRefreshed", null, laptopCache.size());
@@ -116,7 +116,7 @@ public class DataManager implements PropertyChangeListener, PropertyChangeNotifi
      */
     public List<Laptop> getAllLaptops() {
         try {
-            return laptopDAO.getAllLaptops();
+            return laptopDAO.getAll();
         } catch (SQLException e) {
             logger.log(Level.WARNING, "Fejl ved hentning af laptops: " + e.getMessage(), e);
             log.addToLog("Fejl ved hentning af laptops: " + e.getMessage());
@@ -264,7 +264,7 @@ public class DataManager implements PropertyChangeListener, PropertyChangeNotifi
      */
     public List<Student> getAllStudents() {
         try {
-            return studentDAO.getAllStudents();
+            return studentDAO.getAll();
         } catch (SQLException e) {
             logger.log(Level.WARNING, "Fejl ved hentning af studerende: " + e.getMessage(), e);
             log.addToLog("Fejl ved hentning af studerende: " + e.getMessage());
