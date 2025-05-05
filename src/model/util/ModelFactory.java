@@ -1,23 +1,23 @@
 package model.util;
 
 import model.logic.DataManager;
+import model.logic.DataModel;
 
 /**
- * Factory-klasse til oprettelse og håndtering af model-komponenterne.
+ * Factory-klasse til oprettelse og håndtering af model-komponenter.
  * Implementerer Singleton pattern for at sikre én instans på tværs af systemet.
- * Dette er den primære factory der skal bruges af ViewModelFactory i MVVM-arkitekturen.
  */
 public class ModelFactory {
     private static ModelFactory instance;
     private static final Object lock = new Object();
 
-    private final DataManager dataManager;
+    private final DataModel model; // Brug interface i stedet for konkret klasse
 
     /**
      * Privat konstruktør, sikrer Singleton pattern
      */
     private ModelFactory() {
-        this.dataManager = new DataManager();
+        this.model = new DataManager(); // Konkret implementation
     }
 
     /**
@@ -37,11 +37,11 @@ public class ModelFactory {
     }
 
     /**
-     * Returnerer DataManager instansen
+     * Returnerer model-interface instansen
      *
-     * @return DataManager instansen
+     * @return ILaptopSystemModel instansen
      */
-    public DataManager getDataManager() {
-        return dataManager;
+    public DataModel getModel() {
+        return model;
     }
 }

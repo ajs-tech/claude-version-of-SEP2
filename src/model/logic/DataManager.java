@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  * Implementerer the Single Responsibility Principle ved at delegere opgaver til specialiserede komponenter.
  * Fungerer som entry point for ViewModels i MVVM-arkitekturen.
  */
-public class DataManager implements PropertyChangeListener, PropertyChangeNotifier {
+public class DataManager implements PropertyChangeListener, DataModel {
     private static final Logger logger = Logger.getLogger(DataManager.class.getName());
 
     // Core components
