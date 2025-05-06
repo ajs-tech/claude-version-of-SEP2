@@ -94,3 +94,34 @@
 [INFO] DataManager initialiseret >> 11:04:17 06-05-2025
 [INFO] Laptop [Test Brand Test Model, ID: fc083634-a0e3-47c7-8d99-77a15c1b4efb] oprettet i database >> 11:04:17 06-05-2025
 [INFO] Laptop oprettet: Test Brand Test Model >> 11:04:17 06-05-2025
+[INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 11:43:26 06-05-2025
+[INFO] Indlæst 0 aktive reservationer fra databasen >> 11:43:27 06-05-2025
+[INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 11:43:27 06-05-2025
+[INFO] Caches opdateret: 3 laptops, 0 studerende >> 11:43:27 06-05-2025
+[INFO] DataManager initialiseret >> 11:43:27 06-05-2025
+[INFO] Laptop [Test Brand Test Model, ID: de6eacd2-6c81-4662-89c1-3a1be35a106a] oprettet i database >> 11:43:27 06-05-2025
+[INFO] Laptop oprettet: Test Brand Test Model >> 11:43:27 06-05-2025
+[INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 11:47:58 06-05-2025
+[INFO] Indlæst 0 aktive reservationer fra databasen >> 11:47:59 06-05-2025
+[INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 11:47:59 06-05-2025
+[INFO] Caches opdateret: 5 laptops, 0 studerende >> 11:47:59 06-05-2025
+[INFO] DataManager initialiseret >> 11:47:59 06-05-2025
+[INFO] Student [Anders Andersen, VIA ID: 123456] oprettet i database >> 11:47:59 06-05-2025
+[INFO] Student oprettet: Anders Andersen (VIA ID: 123456) >> 11:47:59 06-05-2025
+[INFO] Reservation oprettet med id:3a4e325c-f5e4-446e-abf7-c56ef6554af2 >> Laptop [Test Brand Test Model] tildelt til student [Anders Andersen] >> 11:47:59 06-05-2025
+[INFO] Caches opdateret: 5 laptops, 1 studerende >> 11:48:00 06-05-2025
+[WARNING] Transaktion rullet tilbage: ERROR: column "reservation_uuid" is of type uuid but expression is of type character varying
+  Hint: You will need to rewrite or cast the expression.
+  Position: 104 >> 11:48:00 06-05-2025
+[ERROR] Fejl ved oprettelse af reservation med transaktion: 3a4e325c-f5e4-446e-abf7-c56ef6554af2: ERROR: column "reservation_uuid" is of type uuid but expression is of type character varying
+  Hint: You will need to rewrite or cast the expression.
+  Position: 104 >> 11:48:00 06-05-2025
+[INFO] Fejl ved oprettelse af reservation: ERROR: column "reservation_uuid" is of type uuid but expression is of type character varying
+  Hint: You will need to rewrite or cast the expression.
+  Position: 104 >> 11:48:00 06-05-2025
+[INFO] Student [Bente Bentsen, VIA ID: 654321] oprettet i database >> 11:48:00 06-05-2025
+[INFO] Student oprettet: Bente Bentsen (VIA ID: 654321) >> 11:48:00 06-05-2025
+[INFO] Student [Bente Bentsen, VIA ID: 654321] tilføjet til PerformanceTypeEnum-ydelses kø >> 11:48:00 06-05-2025
+[INFO] Student [Bente Bentsen, VIA ID: 654321] tilføjet til lav-ydelses kø >> 11:48:00 06-05-2025
+[INFO] Student Bente Bentsen tilføjet til lav-ydelses kø >> 11:48:00 06-05-2025
+[INFO] Caches opdateret: 5 laptops, 2 studerende >> 11:48:01 06-05-2025

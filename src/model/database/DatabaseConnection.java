@@ -30,7 +30,7 @@ public class DatabaseConnection {
     private static boolean poolClosed = false;
 
     // Sti til konfigurationsfilen
-    private static final String CONFIG_FILE = "/Users/ajs/IdeaProjects/claude-version/src/main/resources/config/database.properties";
+    private static final String CONFIG_FILE = "src/main/resources/config/database.properties";
 
     // Forbindelsesstatistik
     private static final AtomicInteger connectionCounter = new AtomicInteger(0);
