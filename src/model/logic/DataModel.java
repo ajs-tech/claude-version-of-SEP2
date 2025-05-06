@@ -223,4 +223,5 @@ public interface DataModel extends PropertyChangeNotifier {
      * @return Liste af studerende i køen
      */
     List<Student> getStudentsInLowPerformanceQueue();
+
 }

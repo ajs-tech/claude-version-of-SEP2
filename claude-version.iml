@@ -7,8 +7,8 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="c3p0-0.11.0" level="project" />
-    <orderEntry type="module-library">
+    <orderEntry type="library" exported="" name="c3p0-0.11.0" level="project" />
+    <orderEntry type="module-library" exported="">
       <library name="JUnit4">
         <CLASSES>
           <root url="jar://$MAVEN_REPOSITORY$/junit/junit/4.13.1/junit-4.13.1.jar!/" />
@@ -18,7 +18,7 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="module-library">
+    <orderEntry type="module-library" exported="">
       <library name="JUnit5.8.1">
         <CLASSES>
           <root url="jar://$MAVEN_REPOSITORY$/org/junit/jupiter/junit-jupiter/5.8.1/junit-jupiter-5.8.1.jar!/" />
@@ -32,6 +32,247 @@
         </CLASSES>
         <JAVADOC />
         <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.base.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.controls.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.fxml.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx-swt.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.graphics.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.media.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.swing.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/1. Semester/lib/javafx.web.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="file://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/C30P" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+        <jarDirectory url="file://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/C30P" recursive="false" />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/Downloads/c3p0-0.9.5.5.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/Downloads/mchange-commons-java-0.2.20.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="library" exported="" name="c3p0-0.9.5.5" level="application" />
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="file://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+        <jarDirectory url="file://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib" recursive="false" />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jfx.incubator.richtext.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jfx.incubator.input.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jdk.jsobject.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.web.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.swing.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.media.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.graphics.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.controls.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.fxml.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.base.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx-swt.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES />
+        <JAVADOC />
+        <SOURCES>
+          <root url="file://$MODULE_DIR$/src" />
+        </SOURCES>
+      </library>
+    </orderEntry>
+    <orderEntry type="library" name="c3p0-0.9.5.5 (1)" level="project" />
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/c3p0-0.9.5.5.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx-swt.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.base.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.controls.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.fxml.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.graphics.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.media.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.swing.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/javafx.web.jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/mchange-commons-java-0.2.20 (2).jar!/" />
+          <root url="jar://$USER_HOME$/OneDrive/Skrivebord/Alle Filer Intellij/lib/postgresql-42.5.0.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES>
+          <root url="file://$USER_HOME$/OneDrive/Skrivebord/1. Semester/src" />
+        </SOURCES>
       </library>
     </orderEntry>
   </component>
