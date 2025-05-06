@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane prefHeight="800.0" prefWidth="1000.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="view.StudentLaptopViewController">
+    <top>
+        <VBox spacing="10.0" BorderPane.alignment="CENTER">
+            <children>
+                <Label styleClass="heading" text="VIA Laptop Udlånssystem">
+                    <font>
+                        <Font name="System Bold" size="24.0" />
+                    </font>
+                    <VBox.margin>
+                        <Insets bottom="10.0" />
+                    </VBox.margin>
+                </Label>
+                <Separator />
+            </children>
+            <padding>
+                <Insets bottom="10.0" left="20.0" right="20.0" top="20.0" />
+            </padding>
+        </VBox>
+    </top>
+    <center>
+        <SplitPane dividerPositions="0.4, 0.8" orientation="VERTICAL" BorderPane.alignment="CENTER">
+            <items>
+                <!-- Øverste del - Student registrering med auto-tildeling -->
+                <VBox spacing="10.0">
+                    <padding>
+                        <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
+                    </padding>
+                    <children>
+                        <Label styleClass="section-header" text="Student registrering og laptop tildeling">
+                            <font>
+                                <Font name="System Bold" size="18.0" />
+                            </font>
+                        </Label>
+                        <Label text="Når du opretter en studerende, vil systemet automatisk tildele en passende laptop baseret på performance-behov. Hvis ingen passende laptop er tilgængelig, sættes studenten på venteliste." wrapText="true" />
+                        <GridPane hgap="10.0" vgap="10.0">
+                            <columnConstraints>
+                                <ColumnConstraints hgrow="SOMETIMES" minWidth="100.0" prefWidth="150.0" />
+                                <ColumnConstraints hgrow="SOMETIMES" minWidth="200.0" prefWidth="300.0" />
+                                <ColumnConstraints hgrow="SOMETIMES" minWidth="100.0" prefWidth="150.0" />
+                                <ColumnConstraints hgrow="SOMETIMES" minWidth="200.0" prefWidth="300.0" />
+                            </columnConstraints>
+                            <rowConstraints>
+                                <RowConstraints minHeight="30.0" prefHeight="40.0" vgrow="SOMETIMES" />
+                                <RowConstraints minHeight="30.0" prefHeight="40.0" vgrow="SOMETIMES" />
+                                <RowConstraints minHeight="30.0" prefHeight="40.0" vgrow="SOMETIMES" />
+                                <RowConstraints minHeight="30.0" prefHeight="40.0" vgrow="SOMETIMES" />
+                            </rowConstraints>
+                            <children>
+                                <!-- Row 1 -->
+                                <Label text="Navn:" />
+                                <TextField fx:id="nameField" GridPane.columnIndex="1" />
+                                <Label text="Email:" GridPane.columnIndex="2" />
+                                <TextField fx:id="emailField" GridPane.columnIndex="3" />
+
+                                <!-- Row 2 -->
+                                <Label text="VIA ID:" GridPane.rowIndex="1" />
+                                <TextField fx:id="viaIdField" GridPane.columnIndex="1" GridPane.rowIndex="1" />
+                                <Label text="Telefonnummer:" GridPane.columnIndex="2" GridPane.rowIndex="1" />
+                                <TextField fx:id="phoneNumberField" GridPane.columnIndex="3" GridPane.rowIndex="1" />
+
+                                <!-- Row 3 -->
+                                <Label text="Uddannelsestitel:" GridPane.rowIndex="2" />
+                                <TextField fx:id="degreeTitleField" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+                                <Label text="Uddannelse slut:" GridPane.columnIndex="2" GridPane.rowIndex="2" />
+                                <DatePicker fx:id="degreeEndDatePicker" prefWidth="9999" GridPane.columnIndex="3" GridPane.rowIndex="2" />
+
+                                <!-- Row 4 -->
+                                <Label text="Performance behov:" GridPane.rowIndex="3" />
+                                <HBox alignment="CENTER_LEFT" spacing="10.0" GridPane.columnIndex="1" GridPane.rowIndex="3">
+                                    <children>
+                                        <RadioButton fx:id="lowPerformanceRadio" mnemonicParsing="false" selected="true" text="Lav (Office, internet)">
+                                            <toggleGroup>
+                                                <ToggleGroup fx:id="performanceGroup" />
+                                            </toggleGroup>
+                                        </RadioButton>
+                                        <RadioButton fx:id="highPerformanceRadio" mnemonicParsing="false" text="Høj (Udvikling, design)" toggleGroup="$performanceGroup" />
+                                    </children>
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" spacing="10.0" GridPane.columnIndex="2" GridPane.columnSpan="2" GridPane.rowIndex="3">
+                                    <children>
+                                        <Button fx:id="createStudentButton" styleClass="action-button" mnemonicParsing="false" onAction="#onCreateStudent" text="Opret studerende" />
+                                        <Button fx:id="clearStudentButton" styleClass="secondary-button" mnemonicParsing="false" onAction="#onClearStudentForm" text="Ryd formular" />
+                                    </children>
+                                </HBox>
+                            </children>
+                        </GridPane>
+                        <Label fx:id="studentErrorLabel" styleClass="error-label" textFill="RED" />
+
+                        <!-- Resultat af seneste tildeling -->
+                        <VBox fx:id="assignmentResultPanel" spacing="5.0" style="-fx-border-color: #cccccc; -fx-border-radius: 5; -fx-padding: 10;">
+                            <children>
+                                <Label styleClass="subsection-header" text="Seneste handling:">
+                                    <font>
+                                        <Font name="System Bold" size="14.0" />
+                                    </font>
+                                </Label>
+                                <Label text="Student:" />
+                                <Label fx:id="resultStudentLabel" styleClass="result-info" text="Ingen handling endnu" />
+                                <Label text="Status:" />
+                                <Label fx:id="resultStatusLabel" styleClass="result-status" text="Ingen handling endnu" />
+                                <Label text="Tildelt laptop:" />
+                                <Label fx:id="resultLaptopLabel" styleClass="result-info" text="Ingen tildeling endnu" />
+                            </children>
+                        </VBox>
+                    </children>
+                </VBox>
+
+                <!-- Midterste del - Laptop oversigt -->
+                <VBox spacing="10.0">
+                    <padding>
+                        <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
+                    </padding>
+                    <children>
+                        <Label styleClass="section-header" text="Oversigt over alle laptops">
+                            <font>
+                                <Font name="System Bold" size="18.0" />
+                            </font>
+                        </Label>
+                        <TableView fx:id="allLaptopsTable" prefHeight="200.0">
+                            <columns>
+                                <TableColumn fx:id="laptopBrandColumn" prefWidth="100.0" text="Mærke" />
+                                <TableColumn fx:id="laptopModelColumn" prefWidth="100.0" text="Model" />
+                                <TableColumn fx:id="laptopRamColumn" prefWidth="75.0" text="RAM (GB)" />
+                                <TableColumn fx:id="laptopDiskColumn" prefWidth="75.0" text="Disk (GB)" />
+                                <TableColumn fx:id="laptopPerformanceColumn" prefWidth="100.0" text="Performance" />
+                                <TableColumn fx:id="laptopStatusColumn" prefWidth="100.0" text="Status" />
+                                <TableColumn fx:id="laptopStudentColumn" prefWidth="150.0" text="Udlånt til" />
+                            </columns>
+                        </TableView>
+                        <HBox alignment="CENTER_RIGHT" spacing="10.0">
+                            <children>
+                                <Button fx:id="refreshLaptopsButton" styleClass="secondary-button" mnemonicParsing="false" onAction="#onRefreshLaptops" text="Opdater liste" />
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+
+                <!-- Nederste del - Ventelister -->
+                <VBox spacing="10.0">
+                    <padding>
+                        <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
+                    </padding>
+                    <children>
+                        <Label styleClass="section-header" text="Ventelister">
+                            <font>
+                                <Font name="System Bold" size="18.0" />
+                            </font>
+                        </Label>
+                        <TabPane>
+                            <tabs>
+                                <Tab text="Høj-Ydelses Venteliste">
+                                    <content>
+                                        <VBox spacing="5.0">
+                                            <padding>
+                                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                                            </padding>
+                                            <children>
+                                                <TableView fx:id="highPerformanceQueueTable" prefHeight="200.0">
+                                                    <columns>
+                                                        <TableColumn fx:id="highQueueViaIdColumn" prefWidth="100.0" text="VIA ID" />
+                                                        <TableColumn fx:id="highQueueNameColumn" prefWidth="150.0" text="Navn" />
+                                                        <TableColumn fx:id="highQueueEmailColumn" prefWidth="150.0" text="Email" />
+                                                        <TableColumn fx:id="highQueuePhoneColumn" prefWidth="100.0" text="Telefon" />
+                                                        <TableColumn fx:id="highQueueDateColumn" prefWidth="150.0" text="Oprettet dato" />
+                                                    </columns>
+                                                </TableView>
+                                            </children>
+                                        </VBox>
+                                    </content>
+                                </Tab>
+                                <Tab text="Lav-Ydelses Venteliste">
+                                    <content>
+                                        <VBox spacing="5.0">
+                                            <padding>
+                                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                                            </padding>
+                                            <children>
+                                                <TableView fx:id="lowPerformanceQueueTable" prefHeight="200.0">
+                                                    <columns>
+                                                        <TableColumn fx:id="lowQueueViaIdColumn" prefWidth="100.0" text="VIA ID" />
+                                                        <TableColumn fx:id="lowQueueNameColumn" prefWidth="150.0" text="Navn" />
+                                                        <TableColumn fx:id="lowQueueEmailColumn" prefWidth="150.0" text="Email" />
+                                                        <TableColumn fx:id="lowQueuePhoneColumn" prefWidth="100.0" text="Telefon" />
+                                                        <TableColumn fx:id="lowQueueDateColumn" prefWidth="150.0" text="Oprettet dato" />
+                                                    </columns>
+                                                </TableView>
+                                            </children>
+                                        </VBox>
+                                    </content>
+                                </Tab>
+                            </tabs>
+                        </TabPane>
+                        <HBox alignment="CENTER_RIGHT" spacing="10.0">
+                            <children>
+                                <Button fx:id="refreshQueuesButton" styleClass="secondary-button" mnemonicParsing="false" onAction="#onRefreshQueues" text="Opdater ventelister" />
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+            </items>
+        </SplitPane>
+    </center>
+    <bottom>
+        <HBox alignment="CENTER_RIGHT" spacing="10.0" BorderPane.alignment="CENTER">
+            <padding>
+                <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
+            </padding>
+            <children>
+                <Label fx:id="statusLabel" styleClass="status-text" text="Klar til at oprette studerende" HBox.hgrow="ALWAYS" />
+                <Button fx:id="exitButton" styleClass="secondary-button" mnemonicParsing="false" onAction="#onExit" text="Afslut" />
+            </children>
+        </HBox>
+    </bottom>
+</BorderPane>

@@ -1,0 +1,26 @@
+<component name="libraryTable">
+  <library name="c3p0-0.9.5.5 (1)">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/Downloads/c3p0-0.9.5.5 (1).jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/mchange-commons-java-0.2.20.jar!/" />
+      <root url="file://$USER_HOME$/.jdks/openjdk-23.0.1" />
+      <root url="file://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx-swt.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.base.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.controls.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.fxml.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.graphics.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.media.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.swing.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/javafx.web.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jdk.jsobject.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jfx.incubator.input.jar!/" />
+      <root url="jar://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib/jfx.incubator.richtext.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/src" />
+    </SOURCES>
+    <jarDirectory url="file://$USER_HOME$/JAVAFX/openjfx-24.0.1_windows-x64_bin-sdk/javafx-sdk-24.0.1/lib" recursive="false" />
+  </library>
+</component>
