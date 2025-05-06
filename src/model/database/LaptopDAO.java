@@ -88,7 +88,7 @@ public class LaptopDAO implements GenericDAO<Laptop, UUID> {
     @Override
     public boolean insert(Laptop laptop) throws SQLException {
         String sql = "INSERT INTO Laptop (laptop_uuid, brand, model, gigabyte, ram, performance_type, state) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)";
+                "VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
