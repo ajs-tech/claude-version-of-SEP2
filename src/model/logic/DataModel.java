@@ -2,220 +2,269 @@ package model.logic;
 
 import model.enums.PerformanceTypeEnum;
 import model.enums.ReservationStatusEnum;
+import model.models.Laptop;
+import model.models.Reservation;
+import model.models.Student;
 
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Centralt interface for laptopudlånssystem.
- * Fungerer som facade til modellag i MVVM-arkitekturen.
- * ViewModels interagerer kun med dette interface.
+ * Central interface for the laptop loan system.
+ * Serves as facade to model layer in MVVM architecture.
+ * ViewModels interact only with this interface.
  */
-public interface DataModel extends PropertyChangeNotifier {
+public interface DataModel {
 
     // ================= System Operations =================
 
     /**
-     * Genindlæser alle caches fra databasen
+     * Reloads all caches from the database
      */
     void refreshCaches();
 
-    // ================= model.models.Laptop Management =================
+    /**
+     * Adds an observer to receive data change notifications
+     *
+     * @param listener The observer to add
+     */
+    void addObserver(java.util.Observer listener);
 
     /**
-     * Returnerer alle laptops i systemet
-     * @return Liste af alle laptops
+     * Removes an observer from data change notifications
+     *
+     * @param listener The observer to remove
+     */
+    void removeObserver(java.util.Observer listener);
+
+    // ================= Laptop Management =================
+
+    /**
+     * Returns all laptops in the system
+     * @return List of all laptops
      */
     List<Laptop> getAllLaptops();
 
     /**
-     * Returnerer antal tilgængelige laptops
-     * @return Antal tilgængelige laptops
+     * Returns the number of available laptops
+     * @return Number of available laptops
      */
     int getAmountOfAvailableLaptops();
 
     /**
-     * Returnerer antal udlånte laptops
-     * @return Antal udlånte laptops
+     * Returns the number of loaned laptops
+     * @return Number of loaned laptops
      */
     int getAmountOfLoanedLaptops();
 
     /**
-     * Finder en tilgængelig laptop med en specifik ydelsestype
-     * @param performanceType Ønsket ydelsestype (HIGH/LOW)
-     * @return Tilgængelig laptop eller null hvis ingen findes
+     * Finds an available laptop with a specific performance type
+     * @param performanceType Desired performance type (HIGH/LOW)
+     * @return Available laptop or null if none found
      */
     Laptop findAvailableLaptop(PerformanceTypeEnum performanceType);
 
     /**
-     * Opretter en ny laptop
-     * @param brand           Laptopens mærke
-     * @param model           Laptopens model
-     * @param gigabyte        Harddiskkapacitet i GB
-     * @param ram             RAM i GB
-     * @param performanceType Ydelsestype (HIGH/LOW)
-     * @return Den oprettede laptop eller null ved fejl
+     * Creates a new laptop
+     * @param brand           Laptop brand
+     * @param model           Laptop model
+     * @param gigabyte        Hard disk capacity in GB
+     * @param ram             RAM in GB
+     * @param performanceType Performance type (HIGH/LOW)
+     * @return The created laptop or null on error
      */
     Laptop createLaptop(String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType);
 
     /**
-     * Opdaterer en eksisterende laptop
-     * @param laptop Den opdaterede laptop
-     * @return true hvis operationen lykkedes
+     * Updates an existing laptop
+     * @param laptop The updated laptop
+     * @return true if the operation was successful
      */
     boolean updateLaptop(Laptop laptop);
+
+    /**
+     * Gets a laptop by ID
+     *
+     * @param id Laptop UUID
+     * @return The laptop if found, otherwise null
+     */
+    Laptop getLaptopById(UUID id);
 
     // ================= Student Management =================
 
     /**
-     * Returnerer alle studerende i systemet
-     * @return Liste af alle studerende
+     * Returns all students in the system
+     * @return List of all students
      */
     List<Student> getAllStudents();
 
     /**
-     * Returnerer antal studerende i systemet
-     * @return Antal studerende
+     * Returns the number of students
+     * @return Number of students
      */
     int getStudentCount();
 
     /**
-     * Finder en student baseret på VIA ID
-     * @param viaId ID at søge efter
-     * @return Student hvis fundet, ellers null
+     * Finds a student based on VIA ID
+     * @param viaId ID to search for
+     * @return Student if found, otherwise null
      */
     Student getStudentByID(int viaId);
 
     /**
-     * Returnerer studerende med behov for høj ydelse
-     * @return Liste af studerende med høj-ydelse behov
+     * Returns students with high performance needs
+     * @return List of students with high-performance needs
      */
     List<Student> getStudentWithHighPowerNeeds();
 
     /**
-     * Returnerer antal studerende med behov for høj ydelse
-     * @return Antal studerende med høj-ydelse behov
+     * Returns the number of students with high performance needs
+     * @return Number of students with high-performance needs
      */
     int getStudentCountOfHighPowerNeeds();
 
     /**
-     * Returnerer studerende med behov for lav ydelse
-     * @return Liste af studerende med lav-ydelse behov
+     * Returns students with low performance needs
+     * @return List of students with low-performance needs
      */
     List<Student> getStudentWithLowPowerNeeds();
 
     /**
-     * Returnerer antal studerende med behov for lav ydelse
-     * @return Antal studerende med lav-ydelse behov
+     * Returns the number of students with low performance needs
+     * @return Number of students with low-performance needs
      */
     int getStudentCountOfLowPowerNeeds();
 
     /**
-     * Returnerer studerende der har en laptop
-     * @return Liste af studerende med laptop
+     * Returns students who have a laptop
+     * @return List of students with laptop
      */
     List<Student> getThoseWhoHaveLaptop();
 
     /**
-     * Returnerer antal studerende der har en laptop
-     * @return Antal studerende med laptop
+     * Returns the number of students who have a laptop
+     * @return Number of students with laptop
      */
     int getCountOfWhoHasLaptop();
 
     /**
-     * Opretter en ny student med intelligent tildeling af laptop
-     * @param name              Studentens navn
-     * @param degreeEndDate     Slutdato for uddannelse
-     * @param degreeTitle       Uddannelsestitel
+     * Creates a new student with intelligent laptop assignment
+     * @param name              Student's name
+     * @param degreeEndDate     Degree end date
+     * @param degreeTitle       Degree title
      * @param viaId             VIA ID
-     * @param email             Email-adresse
-     * @param phoneNumber       Telefonnummer
-     * @param performanceNeeded Behov for laptoptype
-     * @return Den oprettede student eller null ved fejl
+     * @param email             Email address
+     * @param phoneNumber       Phone number
+     * @param performanceNeeded Performance needs (HIGH/LOW)
+     * @return The created student or null on error
      */
     Student createStudent(String name, Date degreeEndDate, String degreeTitle,
                           int viaId, String email, int phoneNumber,
                           PerformanceTypeEnum performanceNeeded);
 
     /**
-     * Opdaterer en eksisterende student
-     * @param student Den opdaterede student
-     * @return true hvis operationen lykkedes
+     * Updates an existing student
+     * @param student The updated student
+     * @return true if the operation was successful
      */
     boolean updateStudent(Student student);
+
+    /**
+     * Deletes a student
+     *
+     * @param viaId Student VIA ID
+     * @return true if the operation was successful
+     */
+    boolean deleteStudent(int viaId);
 
     // ================= Reservation Management =================
 
     /**
-     * Giver adgang til ReservationManager-objektet
-     * @return ReservationManager-instansen
-     */
-    ReservationManager getReservationManager();
-
-    /**
-     * Opretter en ny reservation
-     * @param laptop  Laptopen der skal udlånes
-     * @param student Studenten der skal låne laptopen
-     * @return Den oprettede reservation eller null ved fejl
+     * Creates a new reservation
+     * @param laptop  The laptop to loan
+     * @param student The student borrowing the laptop
+     * @return The created reservation or null on error
      */
     Reservation createReservation(Laptop laptop, Student student);
 
     /**
-     * Opdaterer en reservations status
-     * @param reservationId Reservationens UUID
-     * @param newStatus     Den nye status
-     * @return true hvis operationen lykkedes
+     * Updates a reservation status
+     * @param reservationId Reservation UUID
+     * @param newStatus     The new status
+     * @return true if the operation was successful
      */
     boolean updateReservationStatus(UUID reservationId, ReservationStatusEnum newStatus);
 
     /**
-     * Returnerer antal aktive reservationer
-     * @return Antal aktive reservationer
+     * Returns the number of active reservations
+     * @return Number of active reservations
      */
     int getAmountOfActiveReservations();
 
     /**
-     * Returnerer alle aktive reservationer
-     * @return Liste af aktive reservationer
+     * Returns all active reservations
+     * @return List of active reservations
      */
     List<Reservation> getAllActiveReservations();
+
+    /**
+     * Gets a reservation by ID
+     *
+     * @param id Reservation UUID
+     * @return The reservation if found, otherwise null
+     */
+    Reservation getReservationById(UUID id);
 
     // ================= Queue Management =================
 
     /**
-     * Tilføjer en student til høj-ydelses køen
-     * @param student Studenten der skal tilføjes
+     * Adds a student to the high-performance queue
+     * @param student The student to add
      */
     void addToHighPerformanceQueue(Student student);
 
     /**
-     * Tilføjer en student til lav-ydelses køen
-     * @param student Studenten der skal tilføjes
+     * Adds a student to the low-performance queue
+     * @param student The student to add
      */
     void addToLowPerformanceQueue(Student student);
 
     /**
-     * Returnerer antal studerende i høj-ydelses køen
-     * @return Antal studerende i køen
+     * Returns the number of students in the high-performance queue
+     * @return Number of students in the queue
      */
-    int getHighNeedingQueueSize();
+    int getHighPerformanceQueueSize();
 
     /**
-     * Returnerer antal studerende i lav-ydelses køen
-     * @return Antal studerende i køen
+     * Returns the number of students in the low-performance queue
+     * @return Number of students in the queue
      */
-    int getLowNeedingQueueSize();
+    int getLowPerformanceQueueSize();
 
     /**
-     * Returnerer studerende i høj-ydelses køen
-     * @return Liste af studerende i køen
+     * Returns students in the high-performance queue
+     * @return List of students in the queue
      */
     List<Student> getStudentsInHighPerformanceQueue();
 
     /**
-     * Returnerer studerende i lav-ydelses køen
-     * @return Liste af studerende i køen
+     * Returns students in the low-performance queue
+     * @return List of students in the queue
      */
     List<Student> getStudentsInLowPerformanceQueue();
+
+    /**
+     * Removes a student from a queue
+     *
+     * @param viaId Student VIA ID
+     * @param performanceType The queue type (HIGH/LOW)
+     * @return true if removal was successful
+     */
+    boolean removeFromQueue(int viaId, PerformanceTypeEnum performanceType);
+
+    /**
+     * Closes resources when the model is no longer needed
+     */
+    void close();
 }

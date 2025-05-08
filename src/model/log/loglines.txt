@@ -94,3 +94,7 @@
 [INFO] DataManager initialiseret >> 11:04:17 06-05-2025
 [INFO] model.models.Laptop [Test Brand Test Model, ID: fc083634-a0e3-47c7-8d99-77a15c1b4efb] oprettet i database >> 11:04:17 06-05-2025
 [INFO] model.models.Laptop oprettet: Test Brand Test Model >> 11:04:17 06-05-2025
+[INFO] Laptop cache refreshed: 1 laptops loaded >> 13:38:34 08-05-2025
+[INFO] Student cache refreshed: 3 students loaded >> 13:38:35 08-05-2025
+[INFO] DataManager initialized >> 13:38:35 08-05-2025
+[INFO] Laptop created: Test Brand Test Model >> 13:38:35 08-05-2025

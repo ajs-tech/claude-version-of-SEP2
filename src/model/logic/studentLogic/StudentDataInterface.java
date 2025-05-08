@@ -1,109 +1,111 @@
 package model.logic.studentLogic;
 
 import model.enums.PerformanceTypeEnum;
+import model.models.Student;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.UUID;
 
 /**
- * Interface der definerer operationer for Student data management.
- * Opdateret til MVVM-arkitektur med support for de nye metoder.
+ * Interface that defines operations for Student data management.
+ * Updated to support MVVM architecture.
  */
 public interface StudentDataInterface {
 
     /**
-     * Returnerer alle studerende i systemet.
+     * Returns all students in the system.
      *
-     * @return Liste af alle studerende
+     * @return List of all students
      */
     ArrayList<Student> getAllStudents();
 
     /**
-     * Returnerer det totale antal studerende.
+     * Returns the number of students.
      *
-     * @return Antal studerende
+     * @return Student count
      */
     int getStudentCount();
 
     /**
-     * Finder en student baseret på VIA ID.
+     * Finds a student based on VIA ID.
      *
      * @param id VIA ID
-     * @return Studenten hvis fundet, ellers null
+     * @return The student if found, otherwise null
      */
     Student getStudentByID(int id);
 
     /**
-     * Returnerer studerende med behov for høj ydelse.
+     * Returns students who need high performance laptops.
      *
-     * @return Liste af studerende med høj-ydelses behov
+     * @return List of students with high-performance needs
      */
     ArrayList<Student> getStudentWithHighPowerNeeds();
 
     /**
-     * Returnerer antal studerende med behov for høj ydelse.
+     * Returns the number of students with high performance needs.
      *
-     * @return Antal studerende med høj-ydelses behov
+     * @return Number of students with high-performance needs
      */
     int getStudentCountOfHighPowerNeeds();
 
     /**
-     * Returnerer studerende med behov for lav ydelse.
+     * Returns students who need low performance laptops.
      *
-     * @return Liste af studerende med lav-ydelses behov
+     * @return List of students with low-performance needs
      */
     ArrayList<Student> getStudentWithLowPowerNeeds();
 
     /**
-     * Returnerer antal studerende med behov for lav ydelse.
+     * Returns the number of students with low performance needs.
      *
-     * @return Antal studerende med lav-ydelses behov
+     * @return Number of students with low-performance needs
      */
     int getStudentCountOfLowPowerNeeds();
 
     /**
-     * Returnerer studerende der har en laptop.
+     * Returns students who currently have a laptop.
      *
-     * @return Liste af studerende med laptop
+     * @return List of students with laptop
      */
     ArrayList<Student> getThoseWhoHaveLaptop();
 
     /**
-     * Returnerer antal studerende der har en laptop.
+     * Returns the number of students who have a laptop.
      *
-     * @return Antal studerende med laptop
+     * @return Number of students with laptop
      */
     int getCountOfWhoHasLaptop();
 
     /**
-     * Opretter en ny student.
+     * Creates a new student.
      *
-     * @param name Name
-     * @param degreeEndDate Uddannelses slutdato
-     * @param degreeTitle Uddannelsestitel
-     * @param viaId VIA ID
-     * @param email Email
-     * @param phoneNumber Telefonnummer
-     * @param performanceNeeded Performance behov (HIGH/LOW)
-     * @return Den oprettede student eller null ved fejl
+     * @param name              Student's name
+     * @param degreeEndDate     End date of degree program
+     * @param degreeTitle       Title of degree program
+     * @param viaId             VIA ID
+     * @param email             Email address
+     * @param phoneNumber       Phone number
+     * @param performanceNeeded Performance needs (HIGH/LOW)
+     * @return The created student or null on error
      */
     Student createStudent(String name, Date degreeEndDate, String degreeTitle,
                           int viaId, String email, int phoneNumber,
                           PerformanceTypeEnum performanceNeeded);
 
     /**
-     * Opdaterer en eksisterende student.
+     * Updates an existing student.
      *
-     * @param student Student at opdatere
-     * @return true hvis operationen lykkedes
+     * @param student The updated student
+     * @return true if the operation was successful
      */
     boolean updateStudent(Student student);
 
     /**
-     * Sletter en student.
+     * Deletes a student.
      *
      * @param viaId Student VIA ID
-     * @return true hvis operationen lykkedes
+     * @return true if the operation was successful
      */
     boolean deleteStudent(int viaId);
 }

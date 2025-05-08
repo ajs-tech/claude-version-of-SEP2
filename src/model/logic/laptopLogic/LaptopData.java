@@ -70,7 +70,7 @@ public class LaptopData extends Observable implements LaptopDataInterface, Obser
     /**
      * Reloads laptop cache from the database.
      */
-    private void refreshCache() {
+    public void refreshCache() {
         try {
             List<Laptop> laptops = laptopDAO.getAll();
 

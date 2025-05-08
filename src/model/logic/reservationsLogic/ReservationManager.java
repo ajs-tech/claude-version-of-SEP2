@@ -1,8 +1,15 @@
 package model.logic.reservationsLogic;
 
+import model.database.LaptopDAO;
+import model.database.QueueDAO;
+import model.database.ReservationDAO;
+import model.database.StudentDAO;
 import model.enums.PerformanceTypeEnum;
 import model.enums.ReservationStatusEnum;
+import model.log.Log;
 import model.models.Laptop;
+import model.models.Reservation;
+import model.models.Student;
 import model.util.ModelObservable;
 
 import java.sql.SQLException;
@@ -20,36 +27,38 @@ import java.util.logging.Logger;
  */
 public class ReservationManager extends Observable implements Observer {
     private static final Logger logger = Logger.getLogger(ReservationManager.class.getName());
-    
+
     // Event types for observer notifications
     public static final String EVENT_RESERVATION_CREATED = "RESERVATION_CREATED";
     public static final String EVENT_RESERVATION_UPDATED = "RESERVATION_UPDATED";
     public static final String EVENT_RESERVATION_STATUS_CHANGED = "RESERVATION_STATUS_CHANGED";
     public static final String EVENT_QUEUE_SIZE_CHANGED = "QUEUE_SIZE_CHANGED";
+    public static final String EVENT_DATA_REFRESHED = "DATA_REFRESHED";
     public static final String EVENT_ERROR = "ERROR";
-    
+
     // Collections for in-memory state
     private final List<Reservation> activeReservations;
     private final GenericQueue highPerformanceQueue;
     private final GenericQueue lowPerformanceQueue;
-    
+
     // DAO layer
     private final QueueDAO queueDAO;
     private final ReservationDAO reservationDAO;
     private final LaptopDAO laptopDAO;
     private final StudentDAO studentDAO;
-    
+
     // Helper classes
     private final ReservationFactory reservationFactory;
     private final Log log;
-    
+
     // Concurrency control
     private final ReadWriteLock reservationsLock;
     private final ExecutorService executor;
-    
+
     // Singleton instance
     private static volatile ReservationManager instance;
-    
+    private static final Object instanceLock = new Object();
+
     /**
      * Private constructor for Singleton pattern.
      */
@@ -57,32 +66,32 @@ public class ReservationManager extends Observable implements Observer {
         this.activeReservations = new ArrayList<>();
         this.highPerformanceQueue = new GenericQueue(PerformanceTypeEnum.HIGH);
         this.lowPerformanceQueue = new GenericQueue(PerformanceTypeEnum.LOW);
-        
+
         // Initialize DAOs
         this.queueDAO = QueueDAO.getInstance();
         this.reservationDAO = ReservationDAO.getInstance();
         this.laptopDAO = LaptopDAO.getInstance();
         this.studentDAO = StudentDAO.getInstance();
-        
+
         // Initialize helper classes
         this.reservationFactory = ReservationFactory.getInstance();
         this.log = Log.getInstance();
-        
+
         // Initialize concurrency controls
         this.reservationsLock = new ReentrantReadWriteLock();
         this.executor = Executors.newFixedThreadPool(2);
-        
+
         // Register as observer
         this.reservationFactory.addObserver(this);
         this.highPerformanceQueue.addObserver(this);
         this.lowPerformanceQueue.addObserver(this);
         this.reservationDAO.addObserver(this);
         this.queueDAO.addObserver(this);
-        
+
         // Load data from database at startup
-        loadFromDatabase();
+        refreshData();
     }
-    
+
     /**
      * Gets the singleton instance with double-checked locking.
      *
@@ -90,7 +99,7 @@ public class ReservationManager extends Observable implements Observer {
      */
     public static ReservationManager getInstance() {
         if (instance == null) {
-            synchronized (ReservationManager.class) {
+            synchronized (instanceLock) {
                 if (instance == null) {
                     instance = new ReservationManager();
                 }
@@ -98,73 +107,83 @@ public class ReservationManager extends Observable implements Observer {
         }
         return instance;
     }
-    
+
     /**
-     * Loads initial data from the database.
+     * Refreshes all data from the database.
+     * Can be called to reload data manually.
      */
-    private void loadFromDatabase() {
+    public void refreshData() {
         executor.submit(() -> {
             try {
                 loadReservationsFromDatabase();
                 loadQueuesFromDatabase();
-                
-                logger.info("Initial data loaded from database");
-            } catch (SQLException e) {
-                logger.log(Level.SEVERE, "Error loading data from database: " + e.getMessage(), e);
-                log.error("Error loading data from database: " + e.getMessage());
-                
+
+                logger.info("Reservation data refreshed from database");
+
                 // Notify observers
                 setChanged();
-                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error loading data from database", e));
+                notifyObservers(new DataEvent(EVENT_DATA_REFRESHED, null));
+
+            } catch (SQLException e) {
+                logger.log(Level.SEVERE, "Error refreshing data from database: " + e.getMessage(), e);
+                log.error("Error refreshing reservation data from database: " + e.getMessage());
+
+                // Notify observers
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error refreshing reservation data", e));
             }
         });
     }
-    
+
     /**
      * Loads active reservations from the database.
      */
     private void loadReservationsFromDatabase() throws SQLException {
         List<Reservation> dbReservations = reservationDAO.getActiveReservations();
-        
+
         reservationsLock.writeLock().lock();
         try {
             activeReservations.clear();
             activeReservations.addAll(dbReservations);
-            
+
             // Add observers to each reservation
             for (Reservation reservation : activeReservations) {
                 reservation.addObserver(this);
             }
-            
+
             logger.info("Loaded " + dbReservations.size() + " active reservations from database");
             log.info("Loaded " + dbReservations.size() + " active reservations from database");
         } finally {
             reservationsLock.writeLock().unlock();
         }
     }
-    
+
     /**
      * Loads queues from the database.
      */
     private void loadQueuesFromDatabase() throws SQLException {
+        // Clear existing queue data
+        highPerformanceQueue.clear();
+        lowPerformanceQueue.clear();
+
         // Load low-performance queue
         List<Student> lowPerformanceStudents = queueDAO.getStudentsInQueue(PerformanceTypeEnum.LOW);
         for (Student student : lowPerformanceStudents) {
             lowPerformanceQueue.addToQueue(student);
         }
-        
+
         // Load high-performance queue
         List<Student> highPerformanceStudents = queueDAO.getStudentsInQueue(PerformanceTypeEnum.HIGH);
         for (Student student : highPerformanceStudents) {
             highPerformanceQueue.addToQueue(student);
         }
-        
+
         logger.info("Loaded " + lowPerformanceStudents.size() + " students in low-performance queue");
         logger.info("Loaded " + highPerformanceStudents.size() + " students in high-performance queue");
         log.info("Loaded queues from database: " + lowPerformanceStudents.size() +
                 " in low-performance queue, " + highPerformanceStudents.size() + " in high-performance queue");
     }
-    
+
     /**
      * Creates a reservation with database persistence.
      *
@@ -176,45 +195,48 @@ public class ReservationManager extends Observable implements Observer {
         try {
             // Check preconditions
             if (laptop == null || student == null) {
-                logger.warning("Null reference: model.models.Laptop or Student is null");
+                logger.warning("Null reference: Laptop or Student is null");
                 log.warning("Error: Cannot create reservation with null references");
                 return null;
             }
-            
+
             if (!laptop.isAvailable()) {
-                logger.warning("model.models.Laptop is not available: " + laptop.getId());
+                logger.warning("Laptop is not available: " + laptop.getId());
                 log.warning("Error: Cannot create reservation with unavailable laptop: " + laptop.getBrand() + " " + laptop.getModel());
                 return null;
             }
-            
+
             if (student.isHasLaptop()) {
                 logger.warning("Student already has a laptop: " + student.getViaId());
                 log.warning("Error: Cannot create reservation for student who already has a laptop: " + student.getName());
                 return null;
             }
-            
+
             // Create reservation object using factory
             Reservation reservation = reservationFactory.createReservation(laptop, student);
-            
+
             // Save to database with transaction support
             boolean success = reservationDAO.createReservationWithTransaction(reservation);
-            
+
             if (success) {
                 // Update in-memory list
                 reservationsLock.writeLock().lock();
                 try {
                     activeReservations.add(reservation);
-                    
+
                     // Add observer to the new reservation
                     reservation.addObserver(this);
                 } finally {
                     reservationsLock.writeLock().unlock();
                 }
-                
+
+                // Remove student from queues if they were in one
+                removeFromQueuesIfPresent(student);
+
                 // Notify observers
                 setChanged();
                 notifyObservers(new ReservationEvent(EVENT_RESERVATION_CREATED, reservation));
-                
+
                 return reservation;
             } else {
                 logger.warning("Could not create reservation in database");
@@ -224,24 +246,46 @@ public class ReservationManager extends Observable implements Observer {
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Error creating reservation: " + e.getMessage(), e);
             log.error("Error creating reservation: " + e.getMessage());
-            
+
             // Notify observers
             setChanged();
             notifyObservers(new ErrorEvent(EVENT_ERROR, "Error creating reservation", e));
-            
+
             return null;
         } catch (IllegalArgumentException e) {
             logger.log(Level.WARNING, "Invalid input for reservation: " + e.getMessage(), e);
             log.warning("Error creating reservation: " + e.getMessage());
-            
+
             // Notify observers
             setChanged();
             notifyObservers(new ErrorEvent(EVENT_ERROR, "Invalid input for reservation", e));
-            
+
             return null;
         }
     }
-    
+
+    /**
+     * Removes a student from queues if they are present in any.
+     *
+     * @param student The student to remove
+     */
+    private void removeFromQueuesIfPresent(Student student) {
+        try {
+            if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
+                queueDAO.removeFromAllQueues(student.getViaId());
+
+                // Remove from in-memory queues
+                highPerformanceQueue.removeStudentById(student.getViaId());
+                lowPerformanceQueue.removeStudentById(student.getViaId());
+
+                log.info("Student " + student.getName() + " removed from queues after reservation creation");
+            }
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "Error checking or removing student from queues: " + e.getMessage(), e);
+            log.warning("Error checking or removing student from queues: " + e.getMessage());
+        }
+    }
+
     /**
      * Updates a reservation status with database persistence.
      *
@@ -252,8 +296,8 @@ public class ReservationManager extends Observable implements Observer {
     public boolean updateReservationStatus(UUID reservationId, ReservationStatusEnum newStatus) {
         try {
             // Find the reservation in memory
-            Reservation reservation = findReservationById(reservationId);
-            
+            Reservation reservation = getReservationById(reservationId);
+
             if (reservation == null) {
                 // If not in memory, try to get from database
                 reservation = reservationDAO.getById(reservationId);
@@ -263,19 +307,19 @@ public class ReservationManager extends Observable implements Observer {
                     return false;
                 }
             }
-            
+
             // Update status
             ReservationStatusEnum oldStatus = reservation.getStatus();
             reservation.changeStatus(newStatus);
-            
+
             // Update in database with transaction support
             boolean success = reservationDAO.updateStatusWithTransaction(reservation);
-            
+
             if (success) {
                 // Remove from in-memory list if cancelled/completed
                 if (newStatus == ReservationStatusEnum.CANCELLED ||
                         newStatus == ReservationStatusEnum.COMPLETED) {
-                    
+
                     reservationsLock.writeLock().lock();
                     try {
                         activeReservations.removeIf(r -> r.getReservationId().equals(reservationId));
@@ -283,14 +327,14 @@ public class ReservationManager extends Observable implements Observer {
                         reservationsLock.writeLock().unlock();
                     }
                 }
-                
+
                 log.info("Reservation " + reservationId + " updated to status: " + newStatus);
-                
+
                 // Notify observers
                 setChanged();
-                notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED, 
+                notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED,
                         reservation, oldStatus, newStatus));
-                
+
                 return true;
             } else {
                 logger.warning("Could not update reservation in database");
@@ -300,22 +344,23 @@ public class ReservationManager extends Observable implements Observer {
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Error updating reservation: " + e.getMessage(), e);
             log.error("Error updating reservation: " + e.getMessage());
-            
+
             // Notify observers
             setChanged();
             notifyObservers(new ErrorEvent(EVENT_ERROR, "Error updating reservation", e));
-            
+
             return false;
         }
     }
-    
+
     /**
-     * Finds a reservation by ID in the in-memory list.
+     * Finds a reservation by ID.
      *
      * @param reservationId The reservation's UUID
      * @return              The reservation or null if not found
      */
-    private Reservation findReservationById(UUID reservationId) {
+    public Reservation getReservationById(UUID reservationId) {
+        // First check in-memory cache
         reservationsLock.readLock().lock();
         try {
             for (Reservation r : activeReservations) {
@@ -323,12 +368,20 @@ public class ReservationManager extends Observable implements Observer {
                     return r;
                 }
             }
-            return null;
         } finally {
             reservationsLock.readLock().unlock();
         }
+
+        // If not found, try database
+        try {
+            return reservationDAO.getById(reservationId);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "Error getting reservation by ID: " + e.getMessage(), e);
+            log.warning("Error getting reservation by ID: " + e.getMessage());
+            return null;
+        }
     }
-    
+
     /**
      * Adds a student to the high-performance queue with database persistence.
      *
@@ -343,20 +396,20 @@ public class ReservationManager extends Observable implements Observer {
                     log.info("Student " + student.getName() + " already has a laptop, not adding to queue");
                     return;
                 }
-                
+
                 if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
                     logger.info("Student " + student.getName() + " is already in a queue");
                     log.info("Student " + student.getName() + " is already in a queue");
                     return;
                 }
-                
+
                 // Check if student's performance need matches the queue
                 if (student.getPerformanceNeeded() != PerformanceTypeEnum.HIGH) {
                     logger.info("Student " + student.getName() + " does not need high performance, redirecting");
                     addToLowPerformanceQueue(student);
                     return;
                 }
-                
+
                 // Check if there's an available laptop with the right performance level
                 List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.HIGH);
                 if (!availableLaptops.isEmpty()) {
@@ -367,10 +420,10 @@ public class ReservationManager extends Observable implements Observer {
                     log.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
                     return;
                 }
-                
+
                 // Add to database queue
                 boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.HIGH);
-                
+
                 if (added) {
                     // Add to in-memory queue
                     highPerformanceQueue.addToQueue(student);
@@ -382,14 +435,14 @@ public class ReservationManager extends Observable implements Observer {
             } catch (SQLException e) {
                 logger.log(Level.SEVERE, "Error adding to high-performance queue: " + e.getMessage(), e);
                 log.error("Error adding to high-performance queue: " + e.getMessage());
-                
+
                 // Notify observers
                 setChanged();
                 notifyObservers(new ErrorEvent(EVENT_ERROR, "Error adding to high-performance queue", e));
             }
         });
     }
-    
+
     /**
      * Adds a student to the low-performance queue with database persistence.
      *
@@ -404,20 +457,20 @@ public class ReservationManager extends Observable implements Observer {
                     log.info("Student " + student.getName() + " already has a laptop, not adding to queue");
                     return;
                 }
-                
+
                 if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
                     logger.info("Student " + student.getName() + " is already in a queue");
                     log.info("Student " + student.getName() + " is already in a queue");
                     return;
                 }
-                
+
                 // Check if student's performance need matches the queue
                 if (student.getPerformanceNeeded() != PerformanceTypeEnum.LOW) {
                     logger.info("Student " + student.getName() + " needs high performance, redirecting");
                     addToHighPerformanceQueue(student);
                     return;
                 }
-                
+
                 // Check if there's an available laptop with the right performance level
                 List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.LOW);
                 if (!availableLaptops.isEmpty()) {
@@ -428,10 +481,10 @@ public class ReservationManager extends Observable implements Observer {
                     log.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
                     return;
                 }
-                
+
                 // Add to database queue
                 boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.LOW);
-                
+
                 if (added) {
                     // Add to in-memory queue
                     lowPerformanceQueue.addToQueue(student);
@@ -443,14 +496,14 @@ public class ReservationManager extends Observable implements Observer {
             } catch (SQLException e) {
                 logger.log(Level.SEVERE, "Error adding to low-performance queue: " + e.getMessage(), e);
                 log.error("Error adding to low-performance queue: " + e.getMessage());
-                
+
                 // Notify observers
                 setChanged();
                 notifyObservers(new ErrorEvent(EVENT_ERROR, "Error adding to low-performance queue", e));
             }
         });
     }
-    
+
     /**
      * Removes a student from a queue.
      *
@@ -462,29 +515,29 @@ public class ReservationManager extends Observable implements Observer {
         try {
             // Remove from database
             boolean removed = queueDAO.removeFromQueue(viaId, performanceType);
-            
+
             if (removed) {
                 // Remove from in-memory queue
                 GenericQueue queue = (performanceType == PerformanceTypeEnum.HIGH) ?
                         highPerformanceQueue : lowPerformanceQueue;
-                
+
                 queue.removeStudentById(viaId);
                 return true;
             }
-            
+
             return removed;
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Error removing from queue: " + e.getMessage(), e);
             log.error("Error removing from queue: " + e.getMessage());
-            
+
             // Notify observers
             setChanged();
             notifyObservers(new ErrorEvent(EVENT_ERROR, "Error removing from queue", e));
-            
+
             return false;
         }
     }
-    
+
     /**
      * Assigns the next student in queue to an available laptop.
      *
@@ -495,7 +548,7 @@ public class ReservationManager extends Observable implements Observer {
         PerformanceTypeEnum laptopType = laptop.getPerformanceType();
         GenericQueue queue;
         String queueTypeName;
-        
+
         if (laptopType == PerformanceTypeEnum.HIGH) {
             queue = highPerformanceQueue;
             queueTypeName = "high-performance";
@@ -503,40 +556,40 @@ public class ReservationManager extends Observable implements Observer {
             queue = lowPerformanceQueue;
             queueTypeName = "low-performance";
         }
-        
+
         if (queue.getQueueSize() > 0) {
             try {
                 // Get next student from database
                 Student nextStudent = queueDAO.getAndRemoveNextInQueue(laptopType);
-                
+
                 if (nextStudent != null) {
                     // Update in-memory queue
                     queue.getAndRemoveNextInLine();
-                    
+
                     // Create reservation
                     Reservation reservation = createReservation(laptop, nextStudent);
-                    
+
                     if (reservation != null) {
                         log.info("Automatic assignment: Student " + nextStudent.getName() +
                                 " assigned laptop " + laptop.getBrand() + " " + laptop.getModel() +
                                 " from " + queueTypeName + " queue");
-                        
+
                         return reservation;
                     }
                 }
             } catch (SQLException e) {
                 logger.log(Level.SEVERE, "Error during automatic assignment from queue: " + e.getMessage(), e);
                 log.error("Error during automatic assignment from queue: " + e.getMessage());
-                
+
                 // Notify observers
                 setChanged();
                 notifyObservers(new ErrorEvent(EVENT_ERROR, "Error during automatic assignment from queue", e));
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Handles events from observed objects.
      */
@@ -551,14 +604,14 @@ public class ReservationManager extends Observable implements Observer {
                 notifyObservers(new ReservationEvent(EVENT_RESERVATION_CREATED, event.getReservation()));
             }
         }
-        // Handle events from model.logic.reservationsLogic.GenericQueue
+        // Handle events from GenericQueue
         else if (o instanceof GenericQueue && arg instanceof GenericQueue.QueueSizeEvent) {
             GenericQueue.QueueSizeEvent event = (GenericQueue.QueueSizeEvent) arg;
             if (GenericQueue.EVENT_QUEUE_SIZE_CHANGED.equals(event.getEventType())) {
                 // Forward event with queue type info
                 PerformanceTypeEnum queueType = ((GenericQueue) o).getPerformanceType();
                 setChanged();
-                notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED, 
+                notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED,
                         queueType, event.getOldSize(), event.getNewSize()));
             }
         }
@@ -571,17 +624,17 @@ public class ReservationManager extends Observable implements Observer {
                     Reservation reservation = (Reservation) o;
                     ReservationStatusEnum oldStatus = (ReservationStatusEnum) event.getOldValue();
                     ReservationStatusEnum newStatus = (ReservationStatusEnum) event.getNewValue();
-                    
+
                     // Forward event
                     setChanged();
-                    notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED, 
+                    notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED,
                             reservation, oldStatus, newStatus));
-                    
+
                     // Handle completed or cancelled reservations
-                    if (oldStatus == ReservationStatusEnum.ACTIVE && 
-                            (newStatus == ReservationStatusEnum.COMPLETED || 
-                             newStatus == ReservationStatusEnum.CANCELLED)) {
-                        
+                    if (oldStatus == ReservationStatusEnum.ACTIVE &&
+                            (newStatus == ReservationStatusEnum.COMPLETED ||
+                                    newStatus == ReservationStatusEnum.CANCELLED)) {
+
                         // Remove from active reservations
                         reservationsLock.writeLock().lock();
                         try {
@@ -589,7 +642,7 @@ public class ReservationManager extends Observable implements Observer {
                         } finally {
                             reservationsLock.writeLock().unlock();
                         }
-                        
+
                         // Check if there are students in the queue for this laptop type
                         assignNextStudentFromQueue(reservation.getLaptop());
                     }
@@ -598,7 +651,7 @@ public class ReservationManager extends Observable implements Observer {
         }
         // Handle events from DAO classes
         else if ((o instanceof ReservationDAO && arg instanceof ReservationDAO.DatabaseEvent) ||
-                 (o instanceof QueueDAO && arg instanceof QueueDAO.DatabaseEvent)) {
+                (o instanceof QueueDAO && arg instanceof QueueDAO.DatabaseEvent)) {
             // Handle error events
             if (arg instanceof ReservationDAO.DatabaseEvent) {
                 ReservationDAO.DatabaseEvent event = (ReservationDAO.DatabaseEvent) arg;
@@ -617,7 +670,7 @@ public class ReservationManager extends Observable implements Observer {
             }
         }
     }
-    
+
     /**
      * Gets the number of active reservations.
      *
@@ -631,7 +684,7 @@ public class ReservationManager extends Observable implements Observer {
             reservationsLock.readLock().unlock();
         }
     }
-    
+
     /**
      * Gets all active reservations.
      *
@@ -645,7 +698,7 @@ public class ReservationManager extends Observable implements Observer {
             reservationsLock.readLock().unlock();
         }
     }
-    
+
     /**
      * Gets the size of the high-performance queue.
      *
@@ -660,7 +713,7 @@ public class ReservationManager extends Observable implements Observer {
             return highPerformanceQueue.getQueueSize();
         }
     }
-    
+
     /**
      * Gets the size of the low-performance queue.
      *
@@ -675,7 +728,7 @@ public class ReservationManager extends Observable implements Observer {
             return lowPerformanceQueue.getQueueSize();
         }
     }
-    
+
     /**
      * Gets students in the high-performance queue.
      *
@@ -690,7 +743,7 @@ public class ReservationManager extends Observable implements Observer {
             return highPerformanceQueue.getAllStudentsInQueue();
         }
     }
-    
+
     /**
      * Gets students in the low-performance queue.
      *
@@ -705,7 +758,7 @@ public class ReservationManager extends Observable implements Observer {
             return lowPerformanceQueue.getAllStudentsInQueue();
         }
     }
-    
+
     /**
      * Shutdown the manager and release resources.
      */
@@ -716,55 +769,78 @@ public class ReservationManager extends Observable implements Observer {
         lowPerformanceQueue.deleteObserver(this);
         reservationDAO.deleteObserver(this);
         queueDAO.deleteObserver(this);
-        
+
         // Shutdown executor
         executor.shutdown();
+
+        log.info("ReservationManager resources released");
     }
-    
+
+    /**
+     * Event class for data operations.
+     */
+    public static class DataEvent {
+        private final String eventType;
+        private final Object data;
+
+        public DataEvent(String eventType, Object data) {
+            this.eventType = eventType;
+            this.data = data;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public Object getData() {
+            return data;
+        }
+    }
+
     /**
      * Event class for reservation operations.
      */
     public static class ReservationEvent {
         private final String eventType;
         private final Reservation reservation;
-        
+
         public ReservationEvent(String eventType, Reservation reservation) {
             this.eventType = eventType;
             this.reservation = reservation;
         }
-        
+
         public String getEventType() {
             return eventType;
         }
-        
+
         public Reservation getReservation() {
             return reservation;
         }
     }
-    
+
     /**
      * Event class for reservation status changes.
      */
     public static class StatusChangedEvent extends ReservationEvent {
         private final ReservationStatusEnum oldStatus;
         private final ReservationStatusEnum newStatus;
-        
-        public StatusChangedEvent(String eventType, Reservation reservation, 
-                                 ReservationStatusEnum oldStatus, ReservationStatusEnum newStatus) {
+
+        public StatusChangedEvent(String eventType, Reservation reservation,
+                                  ReservationStatusEnum oldStatus, ReservationStatusEnum newStatus) {
             super(eventType, reservation);
             this.oldStatus = oldStatus;
             this.newStatus = newStatus;
         }
-        
+
         public ReservationStatusEnum getOldStatus() {
             return oldStatus;
         }
-        
+
         public ReservationStatusEnum getNewStatus() {
             return newStatus;
         }
     }
-    
+
     /**
      * Event class for queue size changes.
      */
@@ -773,31 +849,31 @@ public class ReservationManager extends Observable implements Observer {
         private final PerformanceTypeEnum queueType;
         private final int oldSize;
         private final int newSize;
-        
+
         public QueueSizeEvent(String eventType, PerformanceTypeEnum queueType, int oldSize, int newSize) {
             this.eventType = eventType;
             this.queueType = queueType;
             this.oldSize = oldSize;
             this.newSize = newSize;
         }
-        
+
         public String getEventType() {
             return eventType;
         }
-        
+
         public PerformanceTypeEnum getQueueType() {
             return queueType;
         }
-        
+
         public int getOldSize() {
             return oldSize;
         }
-        
+
         public int getNewSize() {
             return newSize;
         }
     }
-    
+
     /**
      * Event class for errors.
      */
@@ -805,21 +881,21 @@ public class ReservationManager extends Observable implements Observer {
         private final String eventType;
         private final String message;
         private final Exception exception;
-        
+
         public ErrorEvent(String eventType, String message, Exception exception) {
             this.eventType = eventType;
             this.message = message;
             this.exception = exception;
         }
-        
+
         public String getEventType() {
             return eventType;
         }
-        
+
         public String getMessage() {
             return message;
         }
-        
+
         public Exception getException() {
             return exception;
         }

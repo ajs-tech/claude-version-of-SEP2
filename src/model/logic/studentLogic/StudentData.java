@@ -1,180 +1,293 @@
 package model.logic.studentLogic;
 
+import model.database.StudentDAO;
 import model.enums.PerformanceTypeEnum;
+import model.log.Log;
+import model.models.Student;
+import model.util.ModelObservable;
 import model.util.ValidationService;
 
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Service-klasse der håndterer student-relateret forretningslogik.
- * Opdateret til MVVM-arkitektur med databinding support og events.
+ * Service class that handles student-related business logic.
+ * Implements Observer pattern using Java's built-in Observable/Observer.
  */
-public class StudentData implements StudentDataInterface, PropertyChangeNotifier {
+public class StudentData extends Observable implements StudentDataInterface, Observer {
     private static final Logger logger = Logger.getLogger(StudentData.class.getName());
     private static final Log log = Log.getInstance();
-    private static final EventBus eventBus = EventBus.getInstance();
+
+    // Event types for observer notifications
+    public static final String EVENT_STUDENT_ADDED = "STUDENT_ADDED";
+    public static final String EVENT_STUDENT_UPDATED = "STUDENT_UPDATED";
+    public static final String EVENT_STUDENT_REMOVED = "STUDENT_REMOVED";
+    public static final String EVENT_STUDENTS_REFRESHED = "STUDENTS_REFRESHED";
+    public static final String EVENT_ERROR = "ERROR";
 
     private final List<Student> studentCache;
     private final StudentDAO studentDAO;
-    private final PropertyChangeSupport changeSupport;
+    private final ReadWriteLock cacheLock;
+
+    // Singleton instance
+    private static volatile StudentData instance;
 
     /**
-     * Konstruktør der initialiserer komponenter og cache.
+     * Private constructor for Singleton pattern.
+     * Initializes components and cache.
      */
-    public StudentData() {
+    private StudentData() {
         this.studentCache = new ArrayList<>();
-        this.studentDAO = new StudentDAO();
-        this.changeSupport = new PropertyChangeSupport(this);
+        this.studentDAO = StudentDAO.getInstance();
+        this.cacheLock = new ReentrantReadWriteLock();
 
-        // Forsøg at indlæse cache fra database
+        // Register as observer of StudentDAO
+        studentDAO.addObserver(this);
+
+        // Load initial data
         refreshCache();
-
-        // Registrer som event subscriber
-        eventBus.subscribe(SystemEvents.StudentCreatedEvent.class,
-                event -> handleStudentCreated(event.getStudent()));
-
-        eventBus.subscribe(SystemEvents.StudentUpdatedEvent.class,
-                event -> handleStudentUpdated(event.getStudent()));
-
-        eventBus.subscribe(SystemEvents.StudentDeletedEvent.class,
-                event -> handleStudentDeleted(event.getStudent()));
-
-        eventBus.subscribe(SystemEvents.StudentHasLaptopChangedEvent.class,
-                event -> handleStudentHasLaptopChanged(event.getStudent(),
-                        event.getOldHasLaptop(),
-                        event.getNewHasLaptop()));
     }
 
     /**
-     * Genindlæser student-cache fra databasen.
+     * Gets the singleton instance with double-checked locking.
+     *
+     * @return The singleton instance
      */
-    private void refreshCache() {
-        try {
-            studentCache.clear();
-            studentCache.addAll(studentDAO.getAll());
-
-            // Registrer som listener til alle studerende
-            for (Student student : studentCache) {
-                student.addPropertyChangeListener(this::handleStudentPropertyChange);
-            }
-
-            firePropertyChange("studentsRefreshed", null, studentCache.size());
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved indlæsning af studerende fra database: " + e.getMessage(), e);
-            log.error("Fejl ved indlæsning af studerende fra database: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Håndterer propertyChange events fra Student objekter.
-     */
-    private void handleStudentPropertyChange(PropertyChangeEvent evt) {
-        if (evt.getSource() instanceof Student) {
-            Student student = (Student) evt.getSource();
-
-            // Propagér relevante events
-            firePropertyChange(evt.getPropertyName(), evt.getOldValue(), evt.getNewValue());
-
-            // Ved hasLaptop ændringer, opdateres statistikker
-            if ("hasLaptop".equals(evt.getPropertyName())) {
-                firePropertyChange("studentsWithLaptopCount", null, getCountOfWhoHasLaptop());
-            }
-        }
-    }
-
-    // Event handlers
-
-    private void handleStudentCreated(Student student) {
-        if (!studentCache.contains(student)) {
-            studentCache.add(student);
-            student.addPropertyChangeListener(this::handleStudentPropertyChange);
-
-            firePropertyChange("studentAdded", null, student);
-            firePropertyChange("studentCount", studentCache.size() - 1, studentCache.size());
-        }
-    }
-
-    private void handleStudentUpdated(Student student) {
-        // Find den eksisterende student i cachen
-        for (int i = 0; i < studentCache.size(); i++) {
-            if (studentCache.get(i).getViaId() == student.getViaId()) {
-                Student oldStudent = studentCache.get(i);
-                studentCache.set(i, student);
-
-                // Overfør listeners til den nye student
-                for (PropertyChangeListener listener : getListenersFromStudent(oldStudent)) {
-                    student.addPropertyChangeListener(listener);
+    public static StudentData getInstance() {
+        if (instance == null) {
+            synchronized (StudentData.class) {
+                if (instance == null) {
+                    instance = new StudentData();
                 }
+            }
+        }
+        return instance;
+    }
 
-                firePropertyChange("studentUpdated", oldStudent, student);
-                break;
+    /**
+     * Reloads student cache from the database.
+     */
+    public void refreshCache() {
+        try {
+            List<Student> students = studentDAO.getAll();
+
+            cacheLock.writeLock().lock();
+            try {
+                studentCache.clear();
+                studentCache.addAll(students);
+
+                // Register as observer to all students
+                for (Student student : students) {
+                    student.addObserver(this);
+                }
+            } finally {
+                cacheLock.writeLock().unlock();
+            }
+
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_STUDENTS_REFRESHED, studentCache.size()));
+
+            log.info("Student cache refreshed: " + students.size() + " students loaded");
+
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "Error loading students from database: " + e.getMessage(), e);
+            log.error("Error loading students from database: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error refreshing student cache", e));
+        }
+    }
+
+    /**
+     * Handles property change events from models and DAOs.
+     */
+    @Override
+    public void update(Observable o, Object arg) {
+        // Handle events from StudentDAO
+        if (o instanceof StudentDAO) {
+            if (arg instanceof StudentDAO.DatabaseEvent) {
+                StudentDAO.DatabaseEvent event = (StudentDAO.DatabaseEvent) arg;
+
+                switch (event.getEventType()) {
+                    case StudentDAO.EVENT_STUDENT_CREATED:
+                        handleStudentCreated((Student) event.getData());
+                        break;
+                    case StudentDAO.EVENT_STUDENT_UPDATED:
+                        handleStudentUpdated((Student) event.getData());
+                        break;
+                    case StudentDAO.EVENT_STUDENT_DELETED:
+                        handleStudentDeleted((Student) event.getData());
+                        break;
+                    case StudentDAO.EVENT_STUDENT_ERROR:
+                        // Forward error event
+                        setChanged();
+                        notifyObservers(new ErrorEvent(EVENT_ERROR,
+                                event.getData().toString(), event.getException()));
+                        break;
+                }
+            }
+        }
+        // Handle events from Student objects
+        else if (o instanceof Student) {
+            if (arg instanceof ModelObservable.PropertyChangeInfo) {
+                ModelObservable.PropertyChangeInfo info = (ModelObservable.PropertyChangeInfo) arg;
+
+                // Forward property change events
+                setChanged();
+                notifyObservers(new PropertyChangeEvent(
+                        info.getPropertyName(), info.getOldValue(), info.getNewValue(), (Student) o));
+
+                // Update statistics for hasLaptop changes
+                if ("hasLaptop".equals(info.getPropertyName())) {
+                    setChanged();
+                    notifyObservers(new CountEvent("studentsWithLaptopCount", getCountOfWhoHasLaptop()));
+                }
             }
         }
     }
 
-    private PropertyChangeListener[] getListenersFromStudent(Student student) {
-        // Dette er en dummy-implementering, da der ikke er direkte adgang
-        // til listeners i en Student. I en rigtig implementering skulle
-        // PropertyChangeListener[] hentes fra student objektet.
-        return new PropertyChangeListener[0];
+    /**
+     * Handles student creation events.
+     */
+    private void handleStudentCreated(Student student) {
+        boolean added = false;
+
+        cacheLock.writeLock().lock();
+        try {
+            // Check if student is already in cache
+            boolean exists = false;
+            for (Student s : studentCache) {
+                if (s.getViaId() == student.getViaId()) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                studentCache.add(student);
+                student.addObserver(this);
+                added = true;
+            }
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+
+        if (added) {
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_STUDENT_ADDED, student));
+        }
     }
 
+    /**
+     * Handles student update events.
+     */
+    private void handleStudentUpdated(Student student) {
+        boolean updated = false;
+        Student oldStudent = null;
+
+        cacheLock.writeLock().lock();
+        try {
+            for (int i = 0; i < studentCache.size(); i++) {
+                if (studentCache.get(i).getViaId() == student.getViaId()) {
+                    oldStudent = studentCache.get(i);
+                    studentCache.set(i, student);
+                    student.addObserver(this);
+                    updated = true;
+                    break;
+                }
+            }
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+
+        if (updated) {
+            setChanged();
+            notifyObservers(new UpdateEvent(EVENT_STUDENT_UPDATED, oldStudent, student));
+        }
+    }
+
+    /**
+     * Handles student deletion events.
+     */
     private void handleStudentDeleted(Student student) {
-        for (int i = 0; i < studentCache.size(); i++) {
-            if (studentCache.get(i).getViaId() == student.getViaId()) {
-                Student removedStudent = studentCache.remove(i);
+        boolean removed = false;
 
-                firePropertyChange("studentRemoved", removedStudent, null);
-                firePropertyChange("studentCount", studentCache.size() + 1, studentCache.size());
-                break;
+        cacheLock.writeLock().lock();
+        try {
+            Iterator<Student> iterator = studentCache.iterator();
+            while (iterator.hasNext()) {
+                Student s = iterator.next();
+                if (s.getViaId() == student.getViaId()) {
+                    iterator.remove();
+                    removed = true;
+                    break;
+                }
             }
+        } finally {
+            cacheLock.writeLock().unlock();
         }
-    }
 
-    private void handleStudentHasLaptopChanged(Student student, boolean oldHasLaptop, boolean newHasLaptop) {
-        // Opdater statistikker
-        firePropertyChange("studentsWithLaptopCount", null, getCountOfWhoHasLaptop());
+        if (removed) {
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_STUDENT_REMOVED, student));
+        }
     }
 
     // StudentDataInterface implementation
 
     @Override
     public ArrayList<Student> getAllStudents() {
-        return new ArrayList<>(studentCache);
+        cacheLock.readLock().lock();
+        try {
+            return new ArrayList<>(studentCache);
+        } finally {
+            cacheLock.readLock().unlock();
+        }
     }
 
     @Override
     public int getStudentCount() {
-        return studentCache.size();
+        cacheLock.readLock().lock();
+        try {
+            return studentCache.size();
+        } finally {
+            cacheLock.readLock().unlock();
+        }
     }
 
     @Override
     public Student getStudentByID(int id) {
-        // Søg først i cache
-        for (Student student : studentCache) {
-            if (student.getViaId() == id) {
-                return student;
+        // Search in cache first
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.getViaId() == id) {
+                    return student;
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
 
-        // Hvis ikke fundet, søg i database
+        // If not found in cache, try database
         try {
             Student student = studentDAO.getById(id);
             if (student != null) {
-                // Tilføj til cache
+                // Add to cache
                 handleStudentCreated(student);
             }
             return student;
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af student med ID " + id + ": " + e.getMessage(), e);
-            log.warning("Fejl ved hentning af student med ID " + id + ": " + e.getMessage());
+            logger.log(Level.WARNING, "Error retrieving student with ID " + id + ": " + e.getMessage(), e);
+            log.warning("Error retrieving student with ID " + id + ": " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error retrieving student", e));
+
             return null;
         }
     }
@@ -182,155 +295,221 @@ public class StudentData implements StudentDataInterface, PropertyChangeNotifier
     @Override
     public ArrayList<Student> getStudentWithHighPowerNeeds() {
         ArrayList<Student> highPowerStudents = new ArrayList<>();
-        for (Student student : studentCache) {
-            if (student.getPerformanceNeeded() == PerformanceTypeEnum.HIGH) {
-                highPowerStudents.add(student);
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.getPerformanceNeeded() == PerformanceTypeEnum.HIGH) {
+                    highPowerStudents.add(student);
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
+
         return highPowerStudents;
     }
 
     @Override
     public int getStudentCountOfHighPowerNeeds() {
-        return getStudentWithHighPowerNeeds().size();
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.getPerformanceNeeded() == PerformanceTypeEnum.HIGH) {
+                    count++;
+                }
+            }
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+
+        return count;
     }
 
     @Override
     public ArrayList<Student> getStudentWithLowPowerNeeds() {
         ArrayList<Student> lowPowerStudents = new ArrayList<>();
-        for (Student student : studentCache) {
-            if (student.getPerformanceNeeded() == PerformanceTypeEnum.LOW) {
-                lowPowerStudents.add(student);
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.getPerformanceNeeded() == PerformanceTypeEnum.LOW) {
+                    lowPowerStudents.add(student);
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
+
         return lowPowerStudents;
     }
 
     @Override
     public int getStudentCountOfLowPowerNeeds() {
-        return getStudentWithLowPowerNeeds().size();
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.getPerformanceNeeded() == PerformanceTypeEnum.LOW) {
+                    count++;
+                }
+            }
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+
+        return count;
     }
 
     @Override
     public ArrayList<Student> getThoseWhoHaveLaptop() {
         ArrayList<Student> studentsWithLaptop = new ArrayList<>();
-        for (Student student : studentCache) {
-            if (student.isHasLaptop()) {
-                studentsWithLaptop.add(student);
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.isHasLaptop()) {
+                    studentsWithLaptop.add(student);
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
+
         return studentsWithLaptop;
     }
 
     @Override
     public int getCountOfWhoHasLaptop() {
-        return getThoseWhoHaveLaptop().size();
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Student student : studentCache) {
+                if (student.isHasLaptop()) {
+                    count++;
+                }
+            }
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+
+        return count;
     }
 
     @Override
     public Student createStudent(String name, Date degreeEndDate, String degreeTitle,
                                  int viaId, String email, int phoneNumber,
                                  PerformanceTypeEnum performanceNeeded) {
-        // Validér input
-        if (!validateStudentData(name, degreeEndDate, degreeTitle, viaId, email, phoneNumber)) {
-            log.warning("Ugyldig student data ved oprettelse");
-            return null;
-        }
-
         try {
-            // Opret student-objekt
+            // Validate input
+            validateStudentData(name, degreeEndDate, degreeTitle, viaId, email, phoneNumber, performanceNeeded);
+
+            // Create student object
             Student student = new Student(name, degreeEndDate, degreeTitle, viaId, email, phoneNumber, performanceNeeded);
 
-            // Gem i database
+            // Save to database
             boolean success = studentDAO.insert(student);
 
             if (success) {
-                // Student-objektet er allerede tilføjet til cachen via event
-                log.info("Student oprettet: " + name + " (VIA ID: " + viaId + ")");
+                // Student is already added to cache via event handling
+                log.info("Student created: " + name + " (VIA ID: " + viaId + ")");
                 return student;
             } else {
-                log.error("Kunne ikke oprette student i database");
+                log.error("Could not create student in database");
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to create student in database", null));
+
                 return null;
             }
+        } catch (IllegalArgumentException e) {
+            log.warning("Invalid student data: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Invalid student data: " + e.getMessage(), e));
+
+            return null;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved oprettelse af student: " + e.getMessage(), e);
-            log.error("Fejl ved oprettelse af student: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error creating student: " + e.getMessage(), e);
+            log.error("Error creating student: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error creating student", e));
+
             return null;
         }
     }
 
     /**
-     * Validerer student data.
+     * Validates student data.
      */
-    private boolean validateStudentData(String name, Date degreeEndDate, String degreeTitle,
-                                        int viaId, String email, int phoneNumber) {
+    private void validateStudentData(String name, Date degreeEndDate, String degreeTitle,
+                                     int viaId, String email, int phoneNumber,
+                                     PerformanceTypeEnum performanceNeeded) {
         if (!ValidationService.isValidPersonName(name)) {
-            log.warning("Ugyldigt navn: " + name);
-            return false;
+            throw new IllegalArgumentException("Invalid name: " + name);
         }
 
         if (degreeEndDate == null) {
-            log.warning("Ugyldig uddannelse slutdato: null");
-            return false;
+            throw new IllegalArgumentException("Degree end date cannot be null");
         }
 
         if (!ValidationService.isValidDegreeTitle(degreeTitle)) {
-            log.warning("Ugyldig uddannelsestitel: " + degreeTitle);
-            return false;
+            throw new IllegalArgumentException("Invalid degree title: " + degreeTitle);
         }
 
         if (!ValidationService.isValidViaId(viaId)) {
-            log.warning("Ugyldigt VIA ID: " + viaId);
-            return false;
+            throw new IllegalArgumentException("Invalid VIA ID: " + viaId);
         }
 
         if (!ValidationService.isValidEmail(email)) {
-            log.warning("Ugyldig email: " + email);
-            return false;
+            throw new IllegalArgumentException("Invalid email: " + email);
         }
 
         if (!ValidationService.isValidPhoneNumber(phoneNumber)) {
-            log.warning("Ugyldigt telefonnummer: " + phoneNumber);
-            return false;
+            throw new IllegalArgumentException("Invalid phone number: " + phoneNumber);
         }
 
-        return true;
+        if (performanceNeeded == null) {
+            throw new IllegalArgumentException("Performance needed cannot be null");
+        }
     }
 
-    /**
-     * Opdaterer en eksisterende student.
-     *
-     * @param student Student at opdatere
-     * @return true hvis operationen lykkedes
-     */
+    @Override
     public boolean updateStudent(Student student) {
         try {
             boolean success = studentDAO.update(student);
 
             if (success) {
-                // Student-objektet er allerede opdateret i cachen via event
-                log.info("Student opdateret: " + student.getName() + " (VIA ID: " + student.getViaId() + ")");
+                // Student is already updated in cache via event handling
+                log.info("Student updated: " + student.getName() + " (VIA ID: " + student.getViaId() + ")");
             } else {
-                log.error("Kunne ikke opdatere student i database: " + student.getViaId());
+                log.error("Could not update student in database: " + student.getViaId());
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to update student in database", null));
             }
 
             return success;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved opdatering af student: " + e.getMessage(), e);
-            log.error("Fejl ved opdatering af student: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error updating student: " + e.getMessage(), e);
+            log.error("Error updating student: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error updating student", e));
+
             return false;
         }
     }
 
-    /**
-     * Sletter en student.
-     *
-     * @param viaId Student VIA ID
-     * @return true hvis operationen lykkedes
-     */
+    @Override
     public boolean deleteStudent(int viaId) {
         try {
-            // Find først student for at kunne sende event
+            // Get student first to send event after deletion
             Student student = getStudentByID(viaId);
             if (student == null) {
                 return false;
@@ -339,43 +518,168 @@ public class StudentData implements StudentDataInterface, PropertyChangeNotifier
             boolean success = studentDAO.delete(viaId);
 
             if (success) {
-                // Student er allerede fjernet fra cache via event
-                log.info("Student slettet: " + viaId);
+                // Student is already removed from cache via event handling
+                log.info("Student deleted: " + viaId);
             } else {
-                log.error("Kunne ikke slette student fra database: " + viaId);
+                log.error("Could not delete student from database: " + viaId);
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to delete student from database", null));
             }
 
             return success;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved sletning af student: " + e.getMessage(), e);
-            log.error("Fejl ved sletning af student: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error deleting student: " + e.getMessage(), e);
+            log.error("Error deleting student: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error deleting student", e));
+
             return false;
         }
     }
 
-    // PropertyChangeNotifier implementation
+    /**
+     * Closes resources and removes observers.
+     */
+    public void close() {
+        studentDAO.deleteObserver(this);
 
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
+        cacheLock.writeLock().lock();
+        try {
+            for (Student student : studentCache) {
+                student.deleteObserver(this);
+            }
+            studentCache.clear();
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
     }
 
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
+    // Event classes
+
+    /**
+     * Event class for data operations.
+     */
+    public static class DataEvent {
+        private final String eventType;
+        private final Object data;
+
+        public DataEvent(String eventType, Object data) {
+            this.eventType = eventType;
+            this.data = data;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public Object getData() {
+            return data;
+        }
     }
 
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
+    /**
+     * Event class for update operations.
+     */
+    public static class UpdateEvent extends DataEvent {
+        private final Object oldValue;
+        private final Object newValue;
+
+        public UpdateEvent(String eventType, Object oldValue, Object newValue) {
+            super(eventType, newValue);
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+        }
+
+        public Object getOldValue() {
+            return oldValue;
+        }
+
+        public Object getNewValue() {
+            return newValue;
+        }
     }
 
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
+    /**
+     * Event class for property changes.
+     */
+    public static class PropertyChangeEvent extends DataEvent {
+        private final String propertyName;
+        private final Object oldValue;
+        private final Object newValue;
+        private final Object source;
+
+        public PropertyChangeEvent(String propertyName, Object oldValue, Object newValue, Object source) {
+            super("propertyChange", newValue);
+            this.propertyName = propertyName;
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+            this.source = source;
+        }
+
+        public String getPropertyName() {
+            return propertyName;
+        }
+
+        public Object getOldValue() {
+            return oldValue;
+        }
+
+        public Object getNewValue() {
+            return newValue;
+        }
+
+        public Object getSource() {
+            return source;
+        }
     }
 
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+    /**
+     * Event class for count updates.
+     */
+    public static class CountEvent {
+        private final String countType;
+        private final int count;
+
+        public CountEvent(String countType, int count) {
+            this.countType = countType;
+            this.count = count;
+        }
+
+        public String getCountType() {
+            return countType;
+        }
+
+        public int getCount() {
+            return count;
+        }
+    }
+
+    /**
+     * Event class for errors.
+     */
+    public static class ErrorEvent {
+        private final String eventType;
+        private final String message;
+        private final Exception exception;
+
+        public ErrorEvent(String eventType, String message, Exception exception) {
+            this.eventType = eventType;
+            this.message = message;
+            this.exception = exception;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public Exception getException() {
+            return exception;
+        }
     }
 }

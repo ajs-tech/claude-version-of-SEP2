@@ -10,7 +10,7 @@ public class TestDatabaseConnection {
             System.out.println(DatabaseConnection.getInstance().getConnectionStats());
         }
 
-        // Luk pool før programmet afsluttes
-        DatabaseConnection.closePool();
+        // No need to explicitly close pool as it's handled internally
+        // or will be garbage collected when the program exits
     }
 }

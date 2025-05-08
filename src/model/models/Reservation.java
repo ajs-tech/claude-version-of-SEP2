@@ -12,11 +12,11 @@ import java.util.UUID;
  * Uses Java's built-in Observable pattern.
  */
 public class Reservation extends ModelObservable {
-    private UUID reservationId;
-    private Student student;
-    private Laptop laptop;
+    private final UUID reservationId;
+    private final Student student;
+    private final Laptop laptop;
     private ReservationStatusEnum status;
-    private Date creationDate;
+    private final Date creationDate;
 
     /**
      * Constructor for creating a new reservation with automatically generated UUID.
@@ -43,7 +43,7 @@ public class Reservation extends ModelObservable {
     public Reservation(UUID reservationId, Student student, Laptop laptop,
                        ReservationStatusEnum status, Date creationDate) {
         validateInput(student, laptop, status, creationDate);
-        
+
         this.reservationId = reservationId;
         this.student = student;
         this.laptop = laptop;
@@ -64,7 +64,7 @@ public class Reservation extends ModelObservable {
     public Reservation(UUID reservationId, Student student, Laptop laptop, ReservationStatusEnum status) {
         this(reservationId, student, laptop, status, new Date());
     }
-    
+
     /**
      * Validates all input parameters.
      * Throws exception with clear message about which validation failed.
@@ -73,15 +73,15 @@ public class Reservation extends ModelObservable {
         if (student == null) {
             throw new IllegalArgumentException("Student cannot be null");
         }
-        
+
         if (laptop == null) {
-            throw new IllegalArgumentException("model.models.Laptop cannot be null");
+            throw new IllegalArgumentException("Laptop cannot be null");
         }
-        
+
         if (status == null) {
             throw new IllegalArgumentException("Status cannot be null");
         }
-        
+
         if (creationDate == null) {
             throw new IllegalArgumentException("Creation date cannot be null");
         }
@@ -129,7 +129,7 @@ public class Reservation extends ModelObservable {
         if (newStatus == null) {
             throw new IllegalArgumentException("New status cannot be null");
         }
-        
+
         ReservationStatusEnum oldStatus = this.status;
         this.status = newStatus;
 
@@ -149,7 +149,7 @@ public class Reservation extends ModelObservable {
             // Update student has laptop status if necessary
             Student reservedStudent = student;
             if (reservedStudent.isHasLaptop()) {
-                reservedStudent.setHasLaptopToOpposite();
+                reservedStudent.setHasLaptop(false);
             }
 
             // Notify that the reservation is completed

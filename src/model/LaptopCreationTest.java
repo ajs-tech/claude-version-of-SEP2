@@ -3,6 +3,7 @@ package model;
 import model.enums.PerformanceTypeEnum;
 import model.logic.DataManager;
 import model.logic.DataModel;
+import model.models.Laptop;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

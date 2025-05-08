@@ -4,7 +4,7 @@ package model.models;
  * Concrete implementation of LaptopState for laptops that are loaned.
  * Part of State Pattern.
  */
-class LoanedState implements LaptopState {
+public class LoanedState implements LaptopState {
 
     /**
      * When a laptop in loaned state is "clicked", the state changes to available.
