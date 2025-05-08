@@ -1,18 +1,7 @@
 package model.logic;
 
-import model.database.LaptopDAO;
-import model.database.QueueDAO;
-import model.database.ReservationDAO;
-import model.database.StudentDAO;
 import model.enums.PerformanceTypeEnum;
 import model.enums.ReservationStatusEnum;
-import model.log.Log;
-import model.logic.reservationsLogic.ReservationManager;
-import model.models.Laptop;
-import model.models.Reservation;
-import model.models.Student;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -85,7 +74,7 @@ public class DataManager implements PropertyChangeListener, DataModel {
      */
     public void refreshCaches() {
         try {
-            // Laptop cache
+            // model.models.Laptop cache
             laptopCache.clear();
             laptopCache.addAll(laptopDAO.getAll());
 
@@ -106,7 +95,7 @@ public class DataManager implements PropertyChangeListener, DataModel {
     }
 
     // ===============================
-    // = Laptop Management Methods =
+    // = model.models.Laptop Management Methods =
     // ===============================
 
     /**
@@ -212,7 +201,7 @@ public class DataManager implements PropertyChangeListener, DataModel {
                 // Tilføj til cache
                 laptopCache.add(laptop);
 
-                log.addToLog("Laptop oprettet: " + laptop.getBrand() + " " + laptop.getModel());
+                log.addToLog("model.models.Laptop oprettet: " + laptop.getBrand() + " " + laptop.getModel());
                 firePropertyChange("laptopCreated", null, laptop);
 
                 return laptop;
@@ -238,7 +227,7 @@ public class DataManager implements PropertyChangeListener, DataModel {
             boolean success = laptopDAO.update(laptop);
 
             if (success) {
-                log.addToLog("Laptop opdateret: " + laptop.getBrand() + " " + laptop.getModel());
+                log.addToLog("model.models.Laptop opdateret: " + laptop.getBrand() + " " + laptop.getModel());
                 firePropertyChange("laptopUpdated", null, laptop);
 
                 // Opdater cache
@@ -613,7 +602,7 @@ public class DataManager implements PropertyChangeListener, DataModel {
                 refreshCaches();
             }
         }
-        // Laptop events
+        // model.models.Laptop events
         else if (evt.getSource() instanceof Laptop) {
             // Propagér state ændringer
             if ("state".equals(evt.getPropertyName()) ||

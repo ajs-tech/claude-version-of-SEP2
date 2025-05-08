@@ -1,13 +1,6 @@
 package model.logic.studentLogic;
 
-import model.database.StudentDAO;
 import model.enums.PerformanceTypeEnum;
-import model.events.SystemEvents;
-import model.log.Log;
-import model.models.Student;
-import model.util.EventBus;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
 import model.util.ValidationService;
 
 import java.beans.PropertyChangeEvent;

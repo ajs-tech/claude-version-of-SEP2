@@ -7,81 +7,81 @@ import java.util.ArrayList;
 import java.util.UUID;
 
 /**
- * Interface der definerer operationer for Laptop data management.
- * Opdateret til MVVM-arkitektur med support for de nye metoder.
+ * Interface that defines operations for Laptop data management.
+ * Updated to support MVVM architecture.
  */
 public interface LaptopDataInterface {
 
     /**
-     * Returnerer alle laptops i systemet.
+     * Returns all laptops in the system.
      *
-     * @return Liste af alle laptops
+     * @return List of all laptops
      */
     ArrayList<Laptop> getAllLaptops();
 
     /**
-     * Returnerer antal tilgængelige laptops.
+     * Returns the number of available laptops.
      *
-     * @return Antal tilgængelige laptops
+     * @return Number of available laptops
      */
     int getAmountOfAvailableLaptops();
 
     /**
-     * Returnerer antal udlånte laptops.
+     * Returns the number of loaned laptops.
      *
-     * @return Antal udlånte laptops
+     * @return Number of loaned laptops
      */
     int getAmountOfLoanedLaptops();
 
     /**
-     * Returnerer antal laptops med en specifik tilstand.
+     * Returns the number of laptops with a specific state.
      *
-     * @param classSimpleName Navnet på tilstandsklassen (f.eks. "AvailableState")
-     * @return Antal laptops med den tilstand
+     * @param classSimpleName The state class name (e.g., "AvailableState")
+     * @return Number of laptops with the state
      */
     int getAmountOfLaptopsByState(String classSimpleName);
 
     /**
-     * Finder en tilgængelig laptop med en specifik performance type.
+     * Finds an available laptop with a specific performance type.
      *
-     * @param performanceTypeEnum Performance type at søge efter (HIGH/LOW)
-     * @return En tilgængelig laptop eller null hvis ingen findes
+     * @param performanceTypeEnum Performance type to search for (HIGH/LOW)
+     * @return An available laptop or null if none found
      */
     Laptop findAvailableLaptop(PerformanceTypeEnum performanceTypeEnum);
 
     /**
-     * Opretter en ny laptop.
+     * Creates a new laptop.
      *
-     * @param brand Brand/mærke
+     * @param brand Brand/manufacturer
      * @param model Model
-     * @param gigabyte Harddisk kapacitet i GB
-     * @param ram RAM i GB
+     * @param gigabyte Hard disk capacity in GB
+     * @param ram RAM in GB
      * @param performanceType Performance type (HIGH/LOW)
-     * @return Den oprettede laptop eller null ved fejl
+     * @return The created laptop or null on error
      */
     Laptop createLaptop(String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType);
 
     /**
-     * Finder en laptop baseret på ID.
+     * Finds a laptop based on ID.
      *
      * @param id Laptop UUID
-     * @return Laptopen hvis fundet, ellers null
+     * @return The laptop if found, otherwise null
      */
     Laptop getLaptopById(UUID id);
 
     /**
-     * Opdaterer en eksisterende laptop.
+     * Updates an existing laptop.
      *
-     * @param laptop Laptop at opdatere
-     * @return true hvis operationen lykkedes
+     * @param laptop Laptop to update
+     * @return true if the operation was successful
      */
     boolean updateLaptop(Laptop laptop);
 
     /**
-     * Sletter en laptop.
+     * Deletes a laptop.
      *
      * @param id Laptop UUID
-     * @return true hvis operationen lykkedes
+     * @return true if the operation was successful
      */
     boolean deleteLaptop(UUID id);
 }

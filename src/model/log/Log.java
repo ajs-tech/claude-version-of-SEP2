@@ -1,107 +1,88 @@
 package model.log;
-
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
-
-import java.beans.PropertyChangeListener;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Observable;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Forbedret logningsklasse med forskellige log-niveauer og notifikationssupport.
- * Implementerer Singleton pattern for at sikre én instans på tværs af systemet.
+ * Enhanced logging class with different log levels and notification support.
+ * Implements Singleton pattern and thread safety.
  */
-public class Log implements PropertyChangeNotifier {
+public class Log extends Observable {
+    private static final Logger logger = Logger.getLogger(Log.class.getName());
     private static final String DEFAULT_LOG_PATH = "src/model/log/loglines.txt";
 
-    // Log-niveauer
+    // Event types for observer notifications
+    public static final String EVENT_LOG_ADDED = "LOG_ADDED";
+    public static final String EVENT_LOG_CLEARED = "LOG_CLEARED";
+
+    // Log levels
     public enum LogLevel {
         DEBUG, INFO, WARNING, ERROR, CRITICAL
     }
 
-    private static Log instance;
-    private static final Object lock = new Object();
+    // Singleton instance with thread safety
+    private static volatile Log instance;
+    private static final Lock initLock = new ReentrantLock();
 
-    private final List<LogLine> logLines;
+    private final List<model.log.LogLine> logLines;
     private final String logFilePath;
-    private LogLevel minFileLogLevel;  // Minimum niveau til fil-logning
-    private LogLevel minMemoryLogLevel; // Minimum niveau til memory-logning
-    private final PropertyChangeSupport changeSupport;
+    private Log.LogLevel minFileLogLevel;  // Minimum level for file logging
+    private Log.LogLevel minMemoryLogLevel; // Minimum level for memory logging
+    private final Lock logLock;
 
     /**
-     * Privat konstruktør, sikrer Singleton pattern
+     * Private constructor for Singleton pattern.
      */
     private Log() {
         this(DEFAULT_LOG_PATH);
     }
 
     /**
-     * Privat konstruktør med specifik log-fil
+     * Private constructor with specific log file.
      *
-     * @param logFilePath Sti til log-filen
+     * @param logFilePath Path to the log file
      */
     private Log(String logFilePath) {
         this.logLines = new ArrayList<>();
         this.logFilePath = logFilePath;
-        this.minFileLogLevel = LogLevel.INFO;     // Default: INFO og højere til fil
-        this.minMemoryLogLevel = LogLevel.DEBUG;  // Default: ALT til memory
-        this.changeSupport = new PropertyChangeSupport(this);
+        this.minFileLogLevel = Log.LogLevel.INFO;     // Default: INFO and higher to file
+        this.minMemoryLogLevel = Log.LogLevel.DEBUG;  // Default: ALL to memory
+        this.logLock = new ReentrantLock();
 
         createFile();
     }
 
     /**
-     * Returnerer den eksisterende instans eller opretter en ny
+     * Gets the singleton instance with double-checked locking.
      *
-     * @return Log instansen
+     * @return The singleton instance
      */
     public static Log getInstance() {
         if (instance == null) {
-            synchronized (lock) {
+            initLock.lock();
+            try {
                 if (instance == null) {
                     instance = new Log();
                 }
+            } finally {
+                initLock.unlock();
             }
         }
         return instance;
     }
 
     /**
-     * Getter for loglineSize
-     *
-     * @return Antal loghændelser i hukommelsen
-     */
-    public int getLogLineSize() {
-        return logLines.size();
-    }
-
-    /**
-     * Returnerer den senest tilføjede loghændelse
-     *
-     * @return Seneste LogLine eller null hvis ingen findes
-     */
-    public LogLine getLastAddedLogLine() {
-        return logLines.isEmpty() ? null : logLines.get(logLines.size() - 1);
-    }
-
-    /**
-     * Returnerer en umodificerbar liste af alle loghændelser
-     *
-     * @return Liste af LogLine objekter
-     */
-    public List<LogLine> getAllLogLines() {
-        return Collections.unmodifiableList(logLines);
-    }
-
-    /**
-     * Sikrer at log-filen eksisterer
+     * Creates the log file if it doesn't exist.
      */
     private void createFile() {
         try {
@@ -111,99 +92,147 @@ public class Log implements PropertyChangeNotifier {
             }
 
             if (file.createNewFile()) {
-                System.out.println("Log-fil oprettet på sti: " + file.getAbsolutePath());
+                System.out.println("Log file created at path: " + file.getAbsolutePath());
             } else {
-                System.out.println("Log-fil eksisterer allerede på sti: " + file.getAbsolutePath());
+                System.out.println("Log file already exists at path: " + file.getAbsolutePath());
             }
         } catch (IOException e) {
-            System.err.println("Fejl ved oprettelse af log-fil: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error creating log file: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Tilføjer en DEBUG-niveau loghændelse
+     * Gets the number of log entries.
      *
-     * @param text Logteksten
+     * @return Number of log entries in memory
+     */
+    public int getLogLineSize() {
+        logLock.lock();
+        try {
+            return logLines.size();
+        } finally {
+            logLock.unlock();
+        }
+    }
+
+    /**
+     * Gets the most recently added log entry.
+     *
+     * @return The latest LogLine or null if none exists
+     */
+    public model.log.LogLine getLastAddedLogLine() {
+        logLock.lock();
+        try {
+            return logLines.isEmpty() ? null : logLines.get(logLines.size() - 1);
+        } finally {
+            logLock.unlock();
+        }
+    }
+
+    /**
+     * Gets all log entries.
+     *
+     * @return Unmodifiable list of all LogLine objects
+     */
+    public List<model.log.LogLine> getAllLogLines() {
+        logLock.lock();
+        try {
+            return Collections.unmodifiableList(new ArrayList<>(logLines));
+        } finally {
+            logLock.unlock();
+        }
+    }
+
+    /**
+     * Adds a DEBUG level log entry.
+     *
+     * @param text The log text
      */
     public void debug(String text) {
-        addToLog(text, LogLevel.DEBUG);
+        addToLog(text, Log.LogLevel.DEBUG);
     }
 
     /**
-     * Tilføjer en INFO-niveau loghændelse
+     * Adds an INFO level log entry.
      *
-     * @param text Logteksten
+     * @param text The log text
      */
     public void info(String text) {
-        addToLog(text, LogLevel.INFO);
+        addToLog(text, Log.LogLevel.INFO);
     }
 
     /**
-     * Tilføjer en WARNING-niveau loghændelse
+     * Adds a WARNING level log entry.
      *
-     * @param text Logteksten
+     * @param text The log text
      */
     public void warning(String text) {
-        addToLog(text, LogLevel.WARNING);
+        addToLog(text, Log.LogLevel.WARNING);
     }
 
     /**
-     * Tilføjer en ERROR-niveau loghændelse
+     * Adds an ERROR level log entry.
      *
-     * @param text Logteksten
+     * @param text The log text
      */
     public void error(String text) {
-        addToLog(text, LogLevel.ERROR);
+        addToLog(text, Log.LogLevel.ERROR);
     }
 
     /**
-     * Tilføjer en CRITICAL-niveau loghændelse
+     * Adds a CRITICAL level log entry.
      *
-     * @param text Logteksten
+     * @param text The log text
      */
     public void critical(String text) {
-        addToLog(text, LogLevel.CRITICAL);
+        addToLog(text, Log.LogLevel.CRITICAL);
     }
 
     /**
-     * Tilføjer en loghændelse med standard INFO niveau (for bagudkompatibilitet)
+     * Adds a log entry with default INFO level (for backward compatibility).
      *
-     * @param text Logteksten
+     * @param text The log text
      */
     public void addToLog(String text) {
-        addToLog(text, LogLevel.INFO);
+        addToLog(text, Log.LogLevel.INFO);
     }
 
     /**
-     * Tilføjer en loghændelse med specificeret niveau
+     * Adds a log entry with specified level.
      *
-     * @param text     Logteksten
-     * @param logLevel Log-niveauet
+     * @param text     The log text
+     * @param logLevel The log level
      */
-    public void addToLog(String text, LogLevel logLevel) {
-        // Opret LogLine objekt
-        LogLine logLine = new LogLine(text, logLevel);
+    public void addToLog(String text, Log.LogLevel logLevel) {
+        // Create LogLine object
+        model.log.LogLine logLine = new model.log.LogLine(text, logLevel);
 
-        // Tilføj til memory hvis niveauet er højt nok
-        if (logLevel.ordinal() >= minMemoryLogLevel.ordinal()) {
-            logLines.add(logLine);
+        logLock.lock();
+        try {
+            // Add to memory if level is high enough
+            if (logLevel.ordinal() >= minMemoryLogLevel.ordinal()) {
+                logLines.add(logLine);
 
-            // Notificér lyttere
-            firePropertyChange("logLineAdded", null, logLine);
+                // Notify observers
+                setChanged();
+                notifyObservers(new Log.LogEvent(EVENT_LOG_ADDED, logLine));
+            }
+        } finally {
+            logLock.unlock();
         }
 
-        // Skriv til fil hvis niveauet er højt nok
+        // Write to file if level is high enough
         if (logLevel.ordinal() >= minFileLogLevel.ordinal()) {
             addToFile(logLine);
         }
     }
 
     /**
-     * Skriver en loghændelse til fil
+     * Writes a log entry to the file.
      *
-     * @param logLine LogLine objektet der skal skrives
+     * @param logLine The LogLine to write
      */
-    private void addToFile(LogLine logLine) {
+    private void addToFile(model.log.LogLine logLine) {
         try {
             Files.write(
                     Paths.get(logFilePath),
@@ -211,74 +240,98 @@ public class Log implements PropertyChangeNotifier {
                     StandardOpenOption.APPEND
             );
         } catch (IOException e) {
-            System.err.println("Fejl ved skrivning til log-fil: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error writing to log file: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Sætter minimum log-niveau for fil-logning
+     * Sets the minimum log level for file logging.
      *
-     * @param level Det nye minimum niveau
+     * @param level The new minimum level
      */
-    public void setMinFileLogLevel(LogLevel level) {
+    public void setMinFileLogLevel(Log.LogLevel level) {
         this.minFileLogLevel = level;
     }
 
     /**
-     * Sætter minimum log-niveau for hukommelses-logning
+     * Sets the minimum log level for memory logging.
      *
-     * @param level Det nye minimum niveau
+     * @param level The new minimum level
      */
-    public void setMinMemoryLogLevel(LogLevel level) {
+    public void setMinMemoryLogLevel(Log.LogLevel level) {
         this.minMemoryLogLevel = level;
     }
 
     /**
-     * Rydder alle loghændelser fra hukommelsen
+     * Clears all log entries from memory.
      */
     public void clearMemoryLog() {
-        int oldSize = logLines.size();
-        logLines.clear();
-        firePropertyChange("logCleared", oldSize, 0);
+        logLock.lock();
+        try {
+            int oldSize = logLines.size();
+            logLines.clear();
+
+            // Notify observers
+            setChanged();
+            notifyObservers(new Log.LogClearEvent(EVENT_LOG_CLEARED, oldSize));
+        } finally {
+            logLock.unlock();
+        }
     }
 
     /**
-     * Læser hele log-filen og returnerer indholdet som en streng
+     * Reads the entire log file and returns its content.
      *
-     * @return Log-filens indhold
+     * @return The log file's content
      */
     public String readFullLog() {
         try {
             return new String(Files.readAllBytes(Paths.get(logFilePath)));
         } catch (IOException e) {
-            System.err.println("Fejl ved læsning af log-fil: " + e.getMessage());
-            return "Kunne ikke læse log-fil: " + e.getMessage();
+            logger.log(Level.SEVERE, "Error reading log file: " + e.getMessage(), e);
+            return "Could not read log file: " + e.getMessage();
         }
     }
 
-    // PropertyChangeNotifier implementation
+    /**
+     * Event class for log operations.
+     */
+    public static class LogEvent {
+        private final String eventType;
+        private final model.log.LogLine logLine;
 
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
+        public LogEvent(String eventType, model.log.LogLine logLine) {
+            this.eventType = eventType;
+            this.logLine = logLine;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public model.log.LogLine getLogLine() {
+            return logLine;
+        }
     }
 
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
+    /**
+     * Event class for log clear operations.
+     */
+    public static class LogClearEvent {
+        private final String eventType;
+        private final int oldSize;
 
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
+        public LogClearEvent(String eventType, int oldSize) {
+            this.eventType = eventType;
+            this.oldSize = oldSize;
+        }
 
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
+        public String getEventType() {
+            return eventType;
+        }
 
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+        public int getOldSize() {
+            return oldSize;
+        }
     }
 }

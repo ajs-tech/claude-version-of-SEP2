@@ -1,7 +1,6 @@
 package model.logic.studentLogic;
 
 import model.enums.PerformanceTypeEnum;
-import model.models.Student;
 
 import java.util.ArrayList;
 import java.util.Date;

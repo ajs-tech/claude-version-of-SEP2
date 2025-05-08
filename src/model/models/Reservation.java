@@ -1,31 +1,29 @@
 package model.models;
 
 import model.enums.ReservationStatusEnum;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
+import model.util.ModelObservable;
 
-import java.beans.PropertyChangeListener;
 import java.util.Date;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Represents a reservation in the loan system.
- * Modified to use standard Java types instead of JavaFX properties.
+ * Uses Java's built-in Observable pattern.
  */
-public class Reservation implements PropertyChangeNotifier {
+public class Reservation extends ModelObservable {
     private UUID reservationId;
     private Student student;
     private Laptop laptop;
     private ReservationStatusEnum status;
     private Date creationDate;
-    private final PropertyChangeSupport changeSupport;
 
     /**
      * Constructor for creating a new reservation with automatically generated UUID.
      *
      * @param student The student borrowing the laptop
      * @param laptop  The laptop being loaned
+     * @throws IllegalArgumentException if input validation fails
      */
     public Reservation(Student student, Laptop laptop) {
         this(UUID.randomUUID(), student, laptop, ReservationStatusEnum.ACTIVE, new Date());
@@ -40,15 +38,17 @@ public class Reservation implements PropertyChangeNotifier {
      * @param laptop        The laptop being loaned
      * @param status        Reservation status
      * @param creationDate  Date of reservation creation
+     * @throws IllegalArgumentException if input validation fails
      */
     public Reservation(UUID reservationId, Student student, Laptop laptop,
                        ReservationStatusEnum status, Date creationDate) {
+        validateInput(student, laptop, status, creationDate);
+        
         this.reservationId = reservationId;
         this.student = student;
         this.laptop = laptop;
         this.status = status;
         this.creationDate = creationDate;
-        this.changeSupport = new PropertyChangeSupport(this);
     }
 
     /**
@@ -59,9 +59,32 @@ public class Reservation implements PropertyChangeNotifier {
      * @param student       The student borrowing the laptop
      * @param laptop        The laptop being loaned
      * @param status        Reservation status
+     * @throws IllegalArgumentException if input validation fails
      */
     public Reservation(UUID reservationId, Student student, Laptop laptop, ReservationStatusEnum status) {
         this(reservationId, student, laptop, status, new Date());
+    }
+    
+    /**
+     * Validates all input parameters.
+     * Throws exception with clear message about which validation failed.
+     */
+    private void validateInput(Student student, Laptop laptop, ReservationStatusEnum status, Date creationDate) {
+        if (student == null) {
+            throw new IllegalArgumentException("Student cannot be null");
+        }
+        
+        if (laptop == null) {
+            throw new IllegalArgumentException("model.models.Laptop cannot be null");
+        }
+        
+        if (status == null) {
+            throw new IllegalArgumentException("Status cannot be null");
+        }
+        
+        if (creationDate == null) {
+            throw new IllegalArgumentException("Creation date cannot be null");
+        }
     }
 
     // Getters
@@ -100,13 +123,18 @@ public class Reservation implements PropertyChangeNotifier {
      * the associated laptop is released and the student's hasLaptop status is updated.
      *
      * @param newStatus The new status for the reservation
+     * @throws IllegalArgumentException if newStatus is null
      */
     public void changeStatus(ReservationStatusEnum newStatus) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("New status cannot be null");
+        }
+        
         ReservationStatusEnum oldStatus = this.status;
         this.status = newStatus;
 
         // Notify about status change
-        firePropertyChange("status", oldStatus, newStatus);
+        notifyPropertyChanged("status", oldStatus, newStatus);
 
         // If a reservation is completed, update laptop and student state
         if (oldStatus == ReservationStatusEnum.ACTIVE &&
@@ -115,7 +143,7 @@ public class Reservation implements PropertyChangeNotifier {
             // Make laptop available again
             Laptop reservedLaptop = laptop;
             if (reservedLaptop.isLoaned()) {
-                reservedLaptop.changeState(AvailableState.INSTANCE);
+                reservedLaptop.changeState(new AvailableState());
             }
 
             // Update student has laptop status if necessary
@@ -125,34 +153,8 @@ public class Reservation implements PropertyChangeNotifier {
             }
 
             // Notify that the reservation is completed
-            firePropertyChange("completed", false, true);
+            notifyPropertyChanged("completed", false, true);
         }
-    }
-
-    // PropertyChangeNotifier implementation
-
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
-
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
     }
 
     @Override

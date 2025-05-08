@@ -1,350 +1,241 @@
 package model.database;
 
-import com.mchange.v2.c3p0.ComboPooledDataSource;
-import model.events.SystemEvents;
-import model.log.Log;
-import model.util.EventBus;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Observable;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Singleton klasse til at håndtere database forbindelser med connection pool.
- * Opdateret til at arbejde med Neon PostgreSQL.
+ * Singleton class for managing database connections.
+ * Implements thread-safe initialization and connection tracking.
  */
-public class DatabaseConnection {
+public class DatabaseConnection extends Observable {
     private static final Logger logger = Logger.getLogger(DatabaseConnection.class.getName());
-    private static final Log log = Log.getInstance();
-    private static final EventBus eventBus = EventBus.getInstance();
 
-    // Connection pool
-    private static ComboPooledDataSource cpds;
-    private static boolean initialized = false;
-    private static boolean poolClosed = false;
+    // Path to configuration file
+    private static final String CONFIG_FILE = "src/main/resources/config/database.properties";
 
-    // Sti til konfigurationsfilen
-    private static final String CONFIG_FILE = "/Users/ajs/IdeaProjects/claude-version/src/main/resources/config/database.properties";
+    // Singleton instance with double-checked locking
+    private static volatile DatabaseConnection instance;
+    private static final Lock initLock = new ReentrantLock();
 
-    // Forbindelsesstatistik
-    private static final AtomicInteger connectionCounter = new AtomicInteger(0);
-    private static final AtomicInteger failedConnectionCounter = new AtomicInteger(0);
+    // Database configuration
+    private String jdbcUrl;
+    private String username;
+    private String password;
+    private int maxRetryAttempts;
+    private int retryDelay;
 
-    // Maksimalt antal genforsøg
-    private static final int MAX_RETRY_ATTEMPTS = 3;
+    // Connection statistics
+    private final AtomicInteger connectionCounter = new AtomicInteger(0);
+    private final AtomicInteger failedConnectionCounter = new AtomicInteger(0);
 
-    static {
-        try {
-            // Initialiser connection pool
-            initializeConnectionPool();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Fejl ved initialisering af database forbindelsespool", e);
-            log.critical("Fejl ved initialisering af database forbindelsespool: " + e.getMessage());
-
-            // Post database error event
-            eventBus.post(new SystemEvents.DatabaseErrorEvent(
-                    "Fejl ved initialisering af database forbindelsespool",
-                    null,
-                    e));
-        }
-    }
+    // Event types for notification
+    public static final String EVENT_CONNECTION_ERROR = "CONNECTION_ERROR";
+    public static final String EVENT_CONNECTION_SUCCESS = "CONNECTION_SUCCESS";
+    public static final String EVENT_POOL_STATISTICS = "POOL_STATISTICS";
 
     /**
-     * Initialiserer forbindelsespoolen med værdier fra properties-fil eller standardværdier.
-     */
-    private static void initializeConnectionPool() {
-        if (initialized && !poolClosed) {
-            return;
-        }
-
-        try {
-            // Opret en ny connection pool
-            cpds = new ComboPooledDataSource();
-
-            // Indlæs konfiguration fra properties-fil
-            Properties dbProps = loadDatabaseProperties();
-
-            // Sæt database driver
-            cpds.setDriverClass(dbProps.getProperty("db.driver"));
-
-            // Sæt database connection info
-            cpds.setJdbcUrl(dbProps.getProperty("db.url"));
-            cpds.setUser(dbProps.getProperty("db.user"));
-            cpds.setPassword(dbProps.getProperty("db.password"));
-
-            // Konfigurer pool-størrelse
-            cpds.setInitialPoolSize(3);  // Start med færre forbindelser for serverless
-            cpds.setMinPoolSize(1);      // Minimum kan være lavere for serverless
-            cpds.setMaxPoolSize(10);     // Begræns max forbindelser for serverless
-            cpds.setAcquireIncrement(1); // Forøg med 1 ad gangen
-
-            // Konfigurer statement caching
-            cpds.setMaxStatements(50);
-
-            // Konfigurer forbindelsestest - vigtigt for serverless
-            cpds.setIdleConnectionTestPeriod(60);  // Test inaktive forbindelser hvert minut
-            cpds.setTestConnectionOnCheckout(true); // Test ved hentning af forbindelse
-            cpds.setTestConnectionOnCheckin(true);  // Test ved returnering af forbindelse
-
-            // Konfigurer timeouts - kortere for serverless
-            cpds.setCheckoutTimeout(20000);  // 20 sekunder timeout for forbindelseshentning
-            cpds.setMaxIdleTime(300);        // 5 minutter max inaktivitetstid
-            cpds.setMaxConnectionAge(1800);  // 30 minutter max forbindelsesalder
-
-            // Konfigurer automatisk forbindelsestest
-            cpds.setPreferredTestQuery("SELECT 1");
-
-            // Konfigurer retry-indstillinger
-            cpds.setAcquireRetryAttempts(5);    // Flere forsøg for serverless
-            cpds.setAcquireRetryDelay(500);     // Et halvt sekund mellem forsøg
-
-            // Aktivér forbindelses-reset ved lukning
-            cpds.setAutoCommitOnClose(true);
-
-            // Tilføj forbindelsesegenskaber specifikt for Neon
-            // I initializeConnectionPool-metoden
-            Properties properties = new Properties();
-            properties.setProperty("user", dbProps.getProperty("db.user"));
-            properties.setProperty("password", dbProps.getProperty("db.password"));
-            cpds.setProperties(properties);
-
-            initialized = true;
-            poolClosed = false;
-
-            logger.info("Database forbindelsespool initialiseret med Neon PostgreSQL");
-            log.info("Database forbindelsespool initialiseret med Neon PostgreSQL");
-
-            // Nulstil tællere
-            connectionCounter.set(0);
-            failedConnectionCounter.set(0);
-
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Fejl ved konfiguration af database forbindelsespool", e);
-            log.critical("Fejl ved konfiguration af database forbindelsespool: " + e.getMessage());
-
-            // Post database error event
-            eventBus.post(new SystemEvents.DatabaseErrorEvent(
-                    "Fejl ved konfiguration af database forbindelsespool",
-                    null,
-                    e));
-
-            throw new RuntimeException("Kunne ikke initialisere database forbindelsespool", e);
-        }
-    }
-
-    /**
-     * Indlæser database-egenskaber fra konfigurationsfilen.
+     * Private constructor for Singleton pattern.
+     * Loads configuration from properties file.
      *
-     * @return Properties-objekt med databasekonfiguration
+     * @throws RuntimeException if configuration fails
      */
-    private static Properties loadDatabaseProperties() {
-        Properties properties = new Properties();
+    private DatabaseConnection() {
         try {
-            // Først forsøg med ClassLoader for at finde filen i classpath
-            InputStream inputStream = DatabaseConnection.class.getClassLoader().getResourceAsStream(CONFIG_FILE);
+            // Load configuration
+            Properties props = loadDatabaseProperties();
 
-            // Hvis ikke fundet i classpath, prøv med FileInputStream
+            // Set connection parameters
+            this.jdbcUrl = props.getProperty("db.url");
+            this.username = props.getProperty("db.user");
+            this.password = props.getProperty("db.password");
+            this.maxRetryAttempts = Integer.parseInt(props.getProperty("db.retry.attempts", "3"));
+            this.retryDelay = Integer.parseInt(props.getProperty("db.retry.delay", "500"));
+
+            // Load driver
+            Class.forName("org.postgresql.Driver");
+
+            logger.info("Database connection configuration initialized");
+        } catch (ClassNotFoundException e) {
+            String errorMsg = "PostgreSQL JDBC driver not found";
+            logger.log(Level.SEVERE, errorMsg, e);
+            throw new RuntimeException(errorMsg, e);
+        } catch (Exception e) {
+            String errorMsg = "Error initializing database connection";
+            logger.log(Level.SEVERE, errorMsg, e);
+            throw new RuntimeException(errorMsg, e);
+        }
+    }
+
+    /**
+     * Gets the singleton instance of model.database.DatabaseConnection.
+     * Uses double-checked locking for thread safety.
+     *
+     * @return The singleton instance
+     */
+    public static DatabaseConnection getInstance() {
+        // First check without locking
+        if (instance == null) {
+            // Lock for initialization
+            initLock.lock();
+            try {
+                // Second check with locking
+                if (instance == null) {
+                    instance = new DatabaseConnection();
+                }
+            } finally {
+                initLock.unlock();
+            }
+        }
+        return instance;
+    }
+
+    /**
+     * Gets a database connection with retry mechanism.
+     *
+     * @return A database connection
+     * @throws SQLException if a connection cannot be established after retries
+     */
+    public Connection getConnection() throws SQLException {
+        SQLException lastException = null;
+
+        for (int attempt = 1; attempt <= maxRetryAttempts; attempt++) {
+            try {
+                Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+
+                // Log successful connection
+                connectionCounter.incrementAndGet();
+
+                // Notify observers
+                setChanged();
+                notifyObservers(new DatabaseEvent(EVENT_CONNECTION_SUCCESS,
+                        "Connection established", connectionCounter.get()));
+
+                return conn;
+            } catch (SQLException e) {
+                lastException = e;
+                failedConnectionCounter.incrementAndGet();
+
+                logger.log(Level.WARNING, "Failed to establish database connection (attempt " +
+                        attempt + "/" + maxRetryAttempts + "): " + e.getMessage(), e);
+
+                // Notify observers about connection error
+                setChanged();
+                notifyObservers(new DatabaseEvent(EVENT_CONNECTION_ERROR, e.getMessage(), e));
+
+                // If this isn't the last attempt, wait before retrying
+                if (attempt < maxRetryAttempts) {
+                    try {
+                        Thread.sleep(retryDelay * attempt); // Increasing delay between retries
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new SQLException("Connection attempt interrupted", ie);
+                    }
+                }
+            }
+        }
+
+        // If we get here, all attempts failed
+        throw new SQLException("Failed to establish database connection after " +
+                maxRetryAttempts + " attempts", lastException);
+    }
+
+    /**
+     * Tests if a connection can be established.
+     *
+     * @return true if connection successful, false otherwise
+     */
+    public boolean testConnection() {
+        try (Connection conn = getConnection()) {
+            return conn != null && !conn.isClosed();
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "Database connection test failed: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Gets statistics about database connections.
+     *
+     * @return String with connection statistics
+     */
+    public String getConnectionStats() {
+        String stats = "Database Connection Statistics:\n" +
+                "  Total successful connections: " + connectionCounter.get() + "\n" +
+                "  Total failed connection attempts: " + failedConnectionCounter.get();
+
+        // Notify observers
+        setChanged();
+        notifyObservers(new DatabaseEvent(EVENT_POOL_STATISTICS, stats, null));
+
+        return stats;
+    }
+
+    /**
+     * Loads database properties from configuration file.
+     *
+     * @return Properties object with database configuration
+     * @throws RuntimeException if properties cannot be loaded
+     */
+    private Properties loadDatabaseProperties() {
+        Properties properties = new Properties();
+
+        try {
+            // First try with ClassLoader to find file in classpath
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(CONFIG_FILE);
+
+            // If not found in classpath, try with FileInputStream
             if (inputStream == null) {
                 inputStream = new FileInputStream(CONFIG_FILE);
             }
 
             properties.load(inputStream);
             inputStream.close();
-            logger.info("Indlæst databasekonfiguration fra " + CONFIG_FILE);
+
+            logger.info("Database configuration loaded from " + CONFIG_FILE);
         } catch (IOException e) {
-            logger.warning("Kunne ikke indlæse database.properties: " + e.getMessage());
-            // Fortsæt uden konfiguration - vil fejle senere med bedre fejlbesked
+            String errorMsg = "Could not load database.properties: " + e.getMessage();
+            logger.log(Level.SEVERE, errorMsg, e);
+            throw new RuntimeException(errorMsg, e);
         }
+
         return properties;
     }
 
     /**
-     * Privat konstruktør for singleton pattern
+     * Event class for database connection notifications.
      */
-    private DatabaseConnection() {
-        // Private konstruktør - kan ikke instantieres
-    }
+    public static class DatabaseEvent {
+        private final String eventType;
+        private final String message;
+        private final Object data;
 
-    /**
-     * Henter en forbindelse fra poolen med retry-mekanisme.
-     *
-     * @return Database forbindelse
-     * @throws SQLException hvis der er problemer med at etablere forbindelsen
-     */
-    public static Connection getConnection() throws SQLException {
-        if (poolClosed) {
-            throw new SQLException("Connection pool er lukket");
+        public DatabaseEvent(String eventType, String message, Object data) {
+            this.eventType = eventType;
+            this.message = message;
+            this.data = data;
         }
 
-        if (!initialized) {
-            initializeConnectionPool();
+        public String getEventType() {
+            return eventType;
         }
 
-        int attempts = 0;
-        SQLException lastException = null;
-
-        while (attempts < MAX_RETRY_ATTEMPTS) {
-            try {
-                Connection conn = cpds.getConnection();
-
-                // Log connection checkout
-                connectionCounter.incrementAndGet();
-
-                // Log forbindelseshentning på højt debug-niveau
-                if (logger.isLoggable(Level.FINE)) {
-                    logger.fine("Database forbindelse hentet fra pool (total: " +
-                            connectionCounter.get() + ")");
-                }
-
-                return conn;
-            } catch (SQLException e) {
-                attempts++;
-                lastException = e;
-
-                failedConnectionCounter.incrementAndGet();
-                logger.log(Level.WARNING, "Fejl ved hentning af database forbindelse (forsøg " +
-                        attempts + "): " + e.getMessage(), e);
-
-                if (attempts < MAX_RETRY_ATTEMPTS) {
-                    try {
-                        // Vent før næste forsøg - længere for serverless pga. potentielle cold starts
-                        Thread.sleep(1000 * attempts); // Stigende forsinkelse mellem forsøg
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
+        public String getMessage() {
+            return message;
         }
 
-        // Log pool-status ved fejl
-        logPoolStatus();
-
-        // Hvis vi når hertil, er alle forsøg mislykkedes
-        String errorMsg = "Kunne ikke etablere databaseforbindelse efter " +
-                MAX_RETRY_ATTEMPTS + " forsøg";
-
-        log.error(errorMsg + ": " +
-                (lastException != null ? lastException.getMessage() : "Ukendt fejl"));
-
-        // Post database error event
-        eventBus.post(new SystemEvents.DatabaseErrorEvent(
-                errorMsg,
-                lastException != null ? lastException.getSQLState() : null,
-                lastException));
-
-        throw lastException != null ? lastException :
-                new SQLException(errorMsg);
-    }
-
-    /**
-     * Lukker forbindelsespoolen - kald denne ved programafslutning.
-     */
-    public static void closePool() {
-        if (cpds != null && !poolClosed) {
-            logger.info("Lukker database forbindelsespool");
-            log.info("Lukker database forbindelsespool");
-
-            // Luk poolen
-            cpds.close();
-
-            poolClosed = true;
-            initialized = false;
-
-            // Log endelige forbindelsesstatistikker
-            logger.info("Total antal forbindelser oprettet: " + connectionCounter.get());
-            logger.info("Total antal mislykkede forbindelsesforsøg: " + failedConnectionCounter.get());
-        }
-    }
-
-    /**
-     * Tester om databasen er tilgængelig.
-     *
-     * @return true hvis databasen er tilgængelig
-     */
-    public static boolean testConnection() {
-        try (Connection conn = getConnection()) {
-            return conn != null && !conn.isClosed();
-        } catch (SQLException e) {
-            logger.log(Level.WARNING, "Database forbindelsestest fejlede: " + e.getMessage(), e);
-            log.warning("Database forbindelsestest fejlede: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Henter statistik om connection pool status.
-     *
-     * @return String med pool-statistik
-     */
-    public static String getPoolStats() {
-        try {
-            StringBuilder stats = new StringBuilder();
-            stats.append("Database Connection Pool Status:\n");
-            stats.append("  Forbindelser i brug: ").append(cpds.getNumBusyConnections()).append("\n");
-            stats.append("  Inaktive forbindelser: ").append(cpds.getNumIdleConnections()).append("\n");
-            stats.append("  Total forbindelser: ").append(cpds.getNumConnections()).append("\n");
-            stats.append("  Ventende tråde: ").append(cpds.getThreadPoolNumActiveThreads()).append("\n");
-            stats.append("  Total oprettet: ").append(connectionCounter.get()).append("\n");
-            stats.append("  Total mislykkede forsøg: ").append(failedConnectionCounter.get());
-            return stats.toString();
-        } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af pool statistik", e);
-            return "Kunne ikke hente pool statistik: " + e.getMessage();
-        }
-    }
-
-    /**
-     * Logger detaljeret statistik om connection pool status.
-     */
-    public static void logPoolStatus() {
-        try {
-            logger.info(getPoolStats());
-            log.info(getPoolStats());
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Fejl ved logging af pool status", e);
-        }
-    }
-
-    /**
-     * Forsøger at geninitialisere connection pool ved alvorlige problemer.
-     */
-    public static void reinitializePool() {
-        logger.warning("Geninitialiserer database forbindelsespool");
-        log.warning("Geninitialiserer database forbindelsespool");
-
-        try {
-            // Luk den nuværende pool
-            if (cpds != null && !poolClosed) {
-                cpds.close();
-                poolClosed = true;
-            }
-
-            // Nulstil for ny initialisering
-            initialized = false;
-
-            // Opret en ny pool
-            initializeConnectionPool();
-
-            logger.info("Database forbindelsespool geninitialiseret succesfuldt");
-            log.info("Database forbindelsespool geninitialiseret succesfuldt");
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Fejl ved geninitialisering af database forbindelsespool", e);
-            log.critical("Fejl ved geninitialisering af database forbindelsespool: " + e.getMessage());
-
-            // Post database error event
-            eventBus.post(new SystemEvents.DatabaseErrorEvent(
-                    "Fejl ved geninitialisering af database forbindelsespool",
-                    null,
-                    e));
-
-            throw new RuntimeException("Kunne ikke geninitialisere database forbindelsespool", e);
+        public Object getData() {
+            return data;
         }
     }
 }

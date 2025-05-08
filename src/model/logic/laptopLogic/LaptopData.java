@@ -2,218 +2,340 @@ package model.logic.laptopLogic;
 
 import model.database.LaptopDAO;
 import model.enums.PerformanceTypeEnum;
-import model.events.SystemEvents;
 import model.log.Log;
 import model.models.Laptop;
-import model.util.EventBus;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
+import model.util.ModelObservable;
 
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Service-klasse der håndterer laptop-relateret forretningslogik.
- * Opdateret til MVVM-arkitektur med databinding support og events.
+ * Service class that handles laptop-related business logic.
+ * Implements Observer pattern using Java's built-in Observable/Observer.
  */
-public class LaptopData implements LaptopDataInterface, PropertyChangeNotifier {
+public class LaptopData extends Observable implements LaptopDataInterface, Observer {
     private static final Logger logger = Logger.getLogger(LaptopData.class.getName());
     private static final Log log = Log.getInstance();
-    private static final EventBus eventBus = EventBus.getInstance();
+
+    // Event types for observer notifications
+    public static final String EVENT_LAPTOP_ADDED = "LAPTOP_ADDED";
+    public static final String EVENT_LAPTOP_UPDATED = "LAPTOP_UPDATED";
+    public static final String EVENT_LAPTOP_REMOVED = "LAPTOP_REMOVED";
+    public static final String EVENT_LAPTOPS_REFRESHED = "LAPTOPS_REFRESHED";
+    public static final String EVENT_ERROR = "ERROR";
 
     private final List<Laptop> laptopCache;
     private final LaptopDAO laptopDAO;
-    private final PropertyChangeSupport changeSupport;
+    private final ReadWriteLock cacheLock;
+
+    // Singleton instance
+    private static volatile LaptopData instance;
 
     /**
-     * Konstruktør der initialiserer komponenter og cache.
+     * Private constructor for Singleton pattern.
+     * Initializes components and cache.
      */
-    public LaptopData() {
+    private LaptopData() {
         this.laptopCache = new ArrayList<>();
-        this.laptopDAO = new LaptopDAO();
-        this.changeSupport = new PropertyChangeSupport(this);
+        this.laptopDAO = LaptopDAO.getInstance();
+        this.cacheLock = new ReentrantReadWriteLock();
 
-        // Forsøg at indlæse cache fra database
+        // Register as observer of LaptopDAO
+        laptopDAO.addObserver(this);
+
+        // Load initial data
         refreshCache();
-
-        // Registrer som event subscriber
-        eventBus.subscribe(SystemEvents.LaptopCreatedEvent.class,
-                event -> handleLaptopCreated(event.getLaptop()));
-
-        eventBus.subscribe(SystemEvents.LaptopUpdatedEvent.class,
-                event -> handleLaptopUpdated(event.getLaptop()));
-
-        eventBus.subscribe(SystemEvents.LaptopDeletedEvent.class,
-                event -> handleLaptopDeleted(event.getLaptop()));
-
-        eventBus.subscribe(SystemEvents.LaptopStateChangedEvent.class,
-                event -> handleLaptopStateChanged(event.getLaptop(),
-                        event.getOldState(),
-                        event.getNewState(),
-                        event.isNowAvailable()));
     }
 
     /**
-     * Genindlæser laptop-cache fra databasen.
+     * Gets the singleton instance with double-checked locking.
+     *
+     * @return The singleton instance
+     */
+    public static LaptopData getInstance() {
+        if (instance == null) {
+            synchronized (LaptopData.class) {
+                if (instance == null) {
+                    instance = new LaptopData();
+                }
+            }
+        }
+        return instance;
+    }
+
+    /**
+     * Reloads laptop cache from the database.
      */
     private void refreshCache() {
         try {
-            laptopCache.clear();
-            laptopCache.addAll(laptopDAO.getAll());
+            List<Laptop> laptops = laptopDAO.getAll();
 
-            // Registrer som listener til alle laptops
-            for (Laptop laptop : laptopCache) {
-                laptop.addPropertyChangeListener(this::handleLaptopPropertyChange);
+            cacheLock.writeLock().lock();
+            try {
+                laptopCache.clear();
+                laptopCache.addAll(laptops);
+
+                // Register as observer to all laptops
+                for (Laptop laptop : laptops) {
+                    laptop.addObserver(this);
+                }
+            } finally {
+                cacheLock.writeLock().unlock();
             }
 
-            firePropertyChange("laptopsRefreshed", null, laptopCache.size());
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_LAPTOPS_REFRESHED, laptopCache.size()));
+
+            log.info("Laptop cache refreshed: " + laptops.size() + " laptops loaded");
+
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved indlæsning af laptops fra database: " + e.getMessage(), e);
-            log.error("Fejl ved indlæsning af laptops fra database: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error loading laptops from database: " + e.getMessage(), e);
+            log.error("Error loading laptops from database: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error refreshing laptop cache", e));
         }
     }
 
     /**
-     * Håndterer propertyChange events fra Laptop objekter.
+     * Handles property change events from models and DAOs.
      */
-    private void handleLaptopPropertyChange(PropertyChangeEvent evt) {
-        if (evt.getSource() instanceof Laptop) {
-            Laptop laptop = (Laptop) evt.getSource();
+    @Override
+    public void update(Observable o, Object arg) {
+        // Handle events from LaptopDAO
+        if (o instanceof LaptopDAO) {
+            if (arg instanceof LaptopDAO.DatabaseEvent) {
+                LaptopDAO.DatabaseEvent event = (LaptopDAO.DatabaseEvent) arg;
 
-            // Propagér relevante events
-            firePropertyChange(evt.getPropertyName(), evt.getOldValue(), evt.getNewValue());
-
-            // Ved state-ændringer, opdateres statistikker
-            if ("state".equals(evt.getPropertyName()) || "stateClassName".equals(evt.getPropertyName())) {
-                firePropertyChange("availableLaptopCount", null, getAmountOfAvailableLaptops());
-                firePropertyChange("loanedLaptopCount", null, getAmountOfLoanedLaptops());
-            }
-        }
-    }
-
-    // Event handlers
-
-    private void handleLaptopCreated(Laptop laptop) {
-        if (!laptopCache.contains(laptop)) {
-            laptopCache.add(laptop);
-            laptop.addPropertyChangeListener(this::handleLaptopPropertyChange);
-
-            firePropertyChange("laptopAdded", null, laptop);
-            firePropertyChange("laptopCount", laptopCache.size() - 1, laptopCache.size());
-        }
-    }
-
-    private void handleLaptopUpdated(Laptop laptop) {
-        // Find den eksisterende laptop i cachen
-        for (int i = 0; i < laptopCache.size(); i++) {
-            if (laptopCache.get(i).getId().equals(laptop.getId())) {
-                Laptop oldLaptop = laptopCache.get(i);
-                laptopCache.set(i, laptop);
-
-                // Overfør listeners til den nye laptop
-                for (PropertyChangeListener listener : getListenersFromLaptop(oldLaptop)) {
-                    laptop.addPropertyChangeListener(listener);
+                switch (event.getEventType()) {
+                    case LaptopDAO.EVENT_LAPTOP_CREATED:
+                        handleLaptopCreated((Laptop) event.getData());
+                        break;
+                    case LaptopDAO.EVENT_LAPTOP_UPDATED:
+                        handleLaptopUpdated((Laptop) event.getData());
+                        break;
+                    case LaptopDAO.EVENT_LAPTOP_DELETED:
+                        handleLaptopDeleted((Laptop) event.getData());
+                        break;
+                    case LaptopDAO.EVENT_LAPTOP_ERROR:
+                        // Forward error event
+                        setChanged();
+                        notifyObservers(new ErrorEvent(EVENT_ERROR,
+                                event.getData().toString(), event.getException()));
+                        break;
                 }
+            }
+        }
+        // Handle events from Laptop objects
+        else if (o instanceof Laptop) {
+            if (arg instanceof ModelObservable.PropertyChangeInfo) {
+                ModelObservable.PropertyChangeInfo info = (ModelObservable.PropertyChangeInfo) arg;
 
-                firePropertyChange("laptopUpdated", oldLaptop, laptop);
-                break;
+                // Forward property change events
+                setChanged();
+                notifyObservers(new PropertyChangeEvent(
+                        info.getPropertyName(), info.getOldValue(), info.getNewValue(), (Laptop) o));
+
+                // Update statistics for state changes
+                if ("state".equals(info.getPropertyName()) ||
+                        "stateClassName".equals(info.getPropertyName()) ||
+                        "available".equals(info.getPropertyName())) {
+
+                    setChanged();
+                    notifyObservers(new CountEvent("availableLaptopCount", getAmountOfAvailableLaptops()));
+
+                    setChanged();
+                    notifyObservers(new CountEvent("loanedLaptopCount", getAmountOfLoanedLaptops()));
+                }
             }
         }
     }
 
-    private PropertyChangeListener[] getListenersFromLaptop(Laptop laptop) {
-        // Dette er en dummy-implementering, da der ikke er direkte adgang
-        // til listeners i en Laptop. I en rigtig implementering skulle
-        // PropertyChangeListener[] hentes fra laptop objektet.
-        return new PropertyChangeListener[0];
+    /**
+     * Handles laptop creation events.
+     */
+    private void handleLaptopCreated(Laptop laptop) {
+        boolean added = false;
+
+        cacheLock.writeLock().lock();
+        try {
+            // Check if laptop is already in cache
+            boolean exists = false;
+            for (Laptop l : laptopCache) {
+                if (l.getId().equals(laptop.getId())) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                laptopCache.add(laptop);
+                laptop.addObserver(this);
+                added = true;
+            }
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+
+        if (added) {
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_LAPTOP_ADDED, laptop));
+        }
     }
 
+    /**
+     * Handles laptop update events.
+     */
+    private void handleLaptopUpdated(Laptop laptop) {
+        boolean updated = false;
+        Laptop oldLaptop = null;
+
+        cacheLock.writeLock().lock();
+        try {
+            for (int i = 0; i < laptopCache.size(); i++) {
+                if (laptopCache.get(i).getId().equals(laptop.getId())) {
+                    oldLaptop = laptopCache.get(i);
+                    laptopCache.set(i, laptop);
+                    laptop.addObserver(this);
+                    updated = true;
+                    break;
+                }
+            }
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+
+        if (updated) {
+            setChanged();
+            notifyObservers(new UpdateEvent(EVENT_LAPTOP_UPDATED, oldLaptop, laptop));
+        }
+    }
+
+    /**
+     * Handles laptop deletion events.
+     */
     private void handleLaptopDeleted(Laptop laptop) {
-        for (int i = 0; i < laptopCache.size(); i++) {
-            if (laptopCache.get(i).getId().equals(laptop.getId())) {
-                Laptop removedLaptop = laptopCache.remove(i);
+        boolean removed = false;
 
-                firePropertyChange("laptopRemoved", removedLaptop, null);
-                firePropertyChange("laptopCount", laptopCache.size() + 1, laptopCache.size());
-                break;
+        cacheLock.writeLock().lock();
+        try {
+            Iterator<Laptop> iterator = laptopCache.iterator();
+            while (iterator.hasNext()) {
+                Laptop l = iterator.next();
+                if (l.getId().equals(laptop.getId())) {
+                    iterator.remove();
+                    removed = true;
+                    break;
+                }
             }
+        } finally {
+            cacheLock.writeLock().unlock();
         }
-    }
 
-    private void handleLaptopStateChanged(Laptop laptop, String oldState, String newState, boolean isNowAvailable) {
-        // Opdater statistikker
-        firePropertyChange("availableLaptopCount", null, getAmountOfAvailableLaptops());
-        firePropertyChange("loanedLaptopCount", null, getAmountOfLoanedLaptops());
+        if (removed) {
+            setChanged();
+            notifyObservers(new DataEvent(EVENT_LAPTOP_REMOVED, laptop));
+        }
     }
 
     // LaptopDataInterface implementation
 
     @Override
     public ArrayList<Laptop> getAllLaptops() {
-        return new ArrayList<>(laptopCache);
+        cacheLock.readLock().lock();
+        try {
+            return new ArrayList<>(laptopCache);
+        } finally {
+            cacheLock.readLock().unlock();
+        }
     }
 
     @Override
     public int getAmountOfAvailableLaptops() {
-        int availableLaptops = 0;
-        for (Laptop laptop : laptopCache) {
-            if (laptop.isAvailable()) {
-                availableLaptops++;
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                if (laptop.isAvailable()) {
+                    count++;
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
-        return availableLaptops;
+
+        return count;
     }
 
     @Override
     public int getAmountOfLoanedLaptops() {
-        int loanedLaptops = 0;
-        for (Laptop laptop : laptopCache) {
-            if (laptop.isLoaned()) {
-                loanedLaptops++;
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                if (laptop.isLoaned()) {
+                    count++;
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
-        return loanedLaptops;
+
+        return count;
     }
 
     @Override
     public int getAmountOfLaptopsByState(String classSimpleName) {
-        int numberOfLaptops = 0;
-        for (Laptop laptop : laptopCache) {
-            if (laptop.getStateClassName().equals(classSimpleName)) {
-                numberOfLaptops++;
+        int count = 0;
+
+        cacheLock.readLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                if (laptop.getStateClassName().equals(classSimpleName)) {
+                    count++;
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
-        return numberOfLaptops;
+
+        return count;
     }
 
     @Override
     public Laptop findAvailableLaptop(PerformanceTypeEnum performanceTypeEnum) {
-        for (Laptop laptop : laptopCache) {
-            if (laptop.isAvailable() && laptop.getPerformanceType().equals(performanceTypeEnum)) {
-                return laptop;
+        // First check cache
+        cacheLock.readLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                if (laptop.isAvailable() && laptop.getPerformanceType() == performanceTypeEnum) {
+                    return laptop;
+                }
             }
+        } finally {
+            cacheLock.readLock().unlock();
         }
 
-        // Hvis ikke fundet i cache, forsøg at hente fra database
+        // If not found in cache, try database
         try {
             List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(performanceTypeEnum);
             if (!availableLaptops.isEmpty()) {
                 Laptop laptop = availableLaptops.get(0);
 
-                // Opdater cache
+                // Add to cache
                 handleLaptopCreated(laptop);
 
                 return laptop;
             }
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved søgning efter tilgængelig laptop i database: " + e.getMessage(), e);
-            log.warning("Fejl ved søgning efter tilgængelig laptop i database: " + e.getMessage());
+            logger.log(Level.WARNING, "Error searching for available laptop in database: " + e.getMessage(), e);
+            log.warning("Error searching for available laptop in database: " + e.getMessage());
         }
 
         return null;
@@ -222,90 +344,134 @@ public class LaptopData implements LaptopDataInterface, PropertyChangeNotifier {
     @Override
     public Laptop createLaptop(String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType) {
         try {
-            // Opret laptop-objekt
+            // Validate input
+            validateLaptopData(brand, model, gigabyte, ram, performanceType);
+
+            // Create laptop object
             Laptop laptop = new Laptop(brand, model, gigabyte, ram, performanceType);
 
-            // Gem i database
+            // Save to database
             boolean success = laptopDAO.insert(laptop);
 
             if (success) {
-                // Laptop-objektet er allerede tilføjet til cachen via event
-                log.info("Laptop oprettet: " + brand + " " + model);
+                // Laptop is already added to cache via event handling
+                log.info("Laptop created: " + brand + " " + model);
                 return laptop;
             } else {
-                log.error("Kunne ikke oprette laptop i database");
+                log.error("Could not create laptop in database");
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to create laptop in database", null));
+
                 return null;
             }
+        } catch (IllegalArgumentException e) {
+            log.warning("Invalid laptop data: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Invalid laptop data: " + e.getMessage(), e));
+
+            return null;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved oprettelse af laptop: " + e.getMessage(), e);
-            log.error("Fejl ved oprettelse af laptop: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error creating laptop: " + e.getMessage(), e);
+            log.error("Error creating laptop: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error creating laptop", e));
+
             return null;
         }
     }
 
     /**
-     * Finder en laptop baseret på ID
-     *
-     * @param id Laptop UUID
-     * @return Laptop hvis fundet, ellers null
+     * Validates laptop data.
      */
-    public Laptop getLaptopById(UUID id) {
-        // Søg først i cache
-        for (Laptop laptop : laptopCache) {
-            if (laptop.getId().equals(id)) {
-                return laptop;
-            }
+    private void validateLaptopData(String brand, String model, int gigabyte, int ram, PerformanceTypeEnum performanceType) {
+        if (brand == null || brand.trim().isEmpty()) {
+            throw new IllegalArgumentException("Brand cannot be empty");
         }
 
-        // Hvis ikke fundet, søg i database
+        if (model == null || model.trim().isEmpty()) {
+            throw new IllegalArgumentException("Model cannot be empty");
+        }
+
+        if (gigabyte <= 0 || gigabyte > 4000) {
+            throw new IllegalArgumentException("Gigabyte must be between 1 and 4000");
+        }
+
+        if (ram <= 0 || ram > 128) {
+            throw new IllegalArgumentException("RAM must be between 1 and 128");
+        }
+
+        if (performanceType == null) {
+            throw new IllegalArgumentException("Performance type cannot be null");
+        }
+    }
+
+    @Override
+    public Laptop getLaptopById(UUID id) {
+        // Search in cache first
+        cacheLock.readLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                if (laptop.getId().equals(id)) {
+                    return laptop;
+                }
+            }
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+
+        // If not found in cache, try database
         try {
             Laptop laptop = laptopDAO.getById(id);
             if (laptop != null) {
-                // Tilføj til cache
+                // Add to cache
                 handleLaptopCreated(laptop);
             }
             return laptop;
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af laptop med ID " + id + ": " + e.getMessage(), e);
-            log.warning("Fejl ved hentning af laptop med ID " + id + ": " + e.getMessage());
+            logger.log(Level.WARNING, "Error retrieving laptop with ID " + id + ": " + e.getMessage(), e);
+            log.warning("Error retrieving laptop with ID " + id + ": " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error retrieving laptop", e));
+
             return null;
         }
     }
 
-    /**
-     * Opdaterer en eksisterende laptop
-     *
-     * @param laptop Laptop at opdatere
-     * @return true hvis operationen lykkedes
-     */
+    @Override
     public boolean updateLaptop(Laptop laptop) {
         try {
             boolean success = laptopDAO.update(laptop);
 
             if (success) {
-                // Laptop-objektet er allerede opdateret i cachen via event
-                log.info("Laptop opdateret: " + laptop.getBrand() + " " + laptop.getModel());
+                // Laptop is already updated in cache via event handling
+                log.info("Laptop updated: " + laptop.getBrand() + " " + laptop.getModel());
             } else {
-                log.error("Kunne ikke opdatere laptop i database: " + laptop.getId());
+                log.error("Could not update laptop in database: " + laptop.getId());
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to update laptop in database", null));
             }
 
             return success;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved opdatering af laptop: " + e.getMessage(), e);
-            log.error("Fejl ved opdatering af laptop: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error updating laptop: " + e.getMessage(), e);
+            log.error("Error updating laptop: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error updating laptop", e));
+
             return false;
         }
     }
 
-    /**
-     * Sletter en laptop
-     *
-     * @param id Laptop UUID
-     * @return true hvis operationen lykkedes
-     */
+    @Override
     public boolean deleteLaptop(UUID id) {
         try {
-            // Find først laptop for at kunne sende event
+            // Get laptop first to send event after deletion
             Laptop laptop = getLaptopById(id);
             if (laptop == null) {
                 return false;
@@ -314,43 +480,168 @@ public class LaptopData implements LaptopDataInterface, PropertyChangeNotifier {
             boolean success = laptopDAO.delete(id);
 
             if (success) {
-                // Laptop er allerede fjernet fra cache via event
-                log.info("Laptop slettet: " + id);
+                // Laptop is already removed from cache via event handling
+                log.info("Laptop deleted: " + id);
             } else {
-                log.error("Kunne ikke slette laptop fra database: " + id);
+                log.error("Could not delete laptop from database: " + id);
+
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Failed to delete laptop from database", null));
             }
 
             return success;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved sletning af laptop: " + e.getMessage(), e);
-            log.error("Fejl ved sletning af laptop: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error deleting laptop: " + e.getMessage(), e);
+            log.error("Error deleting laptop: " + e.getMessage());
+
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error deleting laptop", e));
+
             return false;
         }
     }
 
-    // PropertyChangeNotifier implementation
+    /**
+     * Closes resources and removes observers.
+     */
+    public void close() {
+        laptopDAO.deleteObserver(this);
 
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
+        cacheLock.writeLock().lock();
+        try {
+            for (Laptop laptop : laptopCache) {
+                laptop.deleteObserver(this);
+            }
+            laptopCache.clear();
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
     }
 
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
+    // Event classes
+
+    /**
+     * Event class for data operations.
+     */
+    public static class DataEvent {
+        private final String eventType;
+        private final Object data;
+
+        public DataEvent(String eventType, Object data) {
+            this.eventType = eventType;
+            this.data = data;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public Object getData() {
+            return data;
+        }
     }
 
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
+    /**
+     * Event class for update operations.
+     */
+    public static class UpdateEvent extends DataEvent {
+        private final Object oldValue;
+        private final Object newValue;
+
+        public UpdateEvent(String eventType, Object oldValue, Object newValue) {
+            super(eventType, newValue);
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+        }
+
+        public Object getOldValue() {
+            return oldValue;
+        }
+
+        public Object getNewValue() {
+            return newValue;
+        }
     }
 
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
+    /**
+     * Event class for property changes.
+     */
+    public static class PropertyChangeEvent extends DataEvent {
+        private final String propertyName;
+        private final Object oldValue;
+        private final Object newValue;
+        private final Object source;
+
+        public PropertyChangeEvent(String propertyName, Object oldValue, Object newValue, Object source) {
+            super("propertyChange", newValue);
+            this.propertyName = propertyName;
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+            this.source = source;
+        }
+
+        public String getPropertyName() {
+            return propertyName;
+        }
+
+        public Object getOldValue() {
+            return oldValue;
+        }
+
+        public Object getNewValue() {
+            return newValue;
+        }
+
+        public Object getSource() {
+            return source;
+        }
     }
 
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+    /**
+     * Event class for count updates.
+     */
+    public static class CountEvent {
+        private final String countType;
+        private final int count;
+
+        public CountEvent(String countType, int count) {
+            this.countType = countType;
+            this.count = count;
+        }
+
+        public String getCountType() {
+            return countType;
+        }
+
+        public int getCount() {
+            return count;
+        }
+    }
+
+    /**
+     * Event class for errors.
+     */
+    public static class ErrorEvent {
+        private final String eventType;
+        private final String message;
+        private final Exception exception;
+
+        public ErrorEvent(String eventType, String message, Exception exception) {
+            this.eventType = eventType;
+            this.message = message;
+            this.exception = exception;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public Exception getException() {
+            return exception;
+        }
     }
 }

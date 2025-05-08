@@ -1,42 +1,36 @@
 package model.models;
 
 /**
- * Konkret implementation af LaptopState for laptops, der er tilgængelige.
- * Del af State Pattern.
+ * Concrete implementation of LaptopState for laptops that are available.
+ * Part of State Pattern.
  */
-public class AvailableState implements LaptopState {
+class AvailableState implements LaptopState {
 
     /**
-     * Singleton instance for at undgå unødvendig objektoprettelse.
-     * Laptops kan dele samme instance af tilstanden.
-     */
-    public static final LaptopState INSTANCE = new AvailableState();
-
-    /**
-     * Når en laptop i tilgængelig tilstand "klikkes", ændres tilstanden til udlånt.
+     * When a laptop in available state is "clicked", the state changes to loaned.
      *
-     * @param laptop Laptop-objektet hvis tilstand skal ændres
+     * @param laptop model.models.Laptop object whose state should be changed
      */
     @Override
     public void click(Laptop laptop) {
-        laptop.changeState(LoanedState.INSTANCE);
+        laptop.changeState(new LoanedState());
     }
 
     /**
-     * Returnerer en brugervenlig beskrivelse af tilstanden.
+     * Returns a user-friendly description of the state.
      *
-     * @return Displaynavn for denne tilstand
+     * @return Display name for this state
      */
     @Override
     public String getDisplayName() {
-        return "Tilgængelig";
+        return "Available";
     }
 
     /**
-     * String-repræsentation af objektet, bruges primært til debugging.
+     * String representation of the object, primarily used for debugging.
      */
     @Override
     public String toString() {
-        return "AvailableState";
+        return "model.models.AvailableState";
     }
 }

@@ -2,11 +2,6 @@ package model.logic;
 
 import model.enums.PerformanceTypeEnum;
 import model.enums.ReservationStatusEnum;
-import model.logic.reservationsLogic.ReservationManager;
-import model.models.Laptop;
-import model.models.Reservation;
-import model.models.Student;
-import model.util.PropertyChangeNotifier;
 
 import java.util.Date;
 import java.util.List;
@@ -26,7 +21,7 @@ public interface DataModel extends PropertyChangeNotifier {
      */
     void refreshCaches();
 
-    // ================= Laptop Management =================
+    // ================= model.models.Laptop Management =================
 
     /**
      * Returnerer alle laptops i systemet

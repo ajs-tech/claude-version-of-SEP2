@@ -3,7 +3,6 @@ package model;
 import model.enums.PerformanceTypeEnum;
 import model.logic.DataManager;
 import model.logic.DataModel;
-import model.models.Laptop;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,7 +47,7 @@ public class LaptopCreationTest {
         Laptop createdLaptop = dataModel.createLaptop(brand, model, gigabyte, ram, perfType);
 
         // Assert - Verificer at laptop-objektet blev oprettet korrekt
-        assertNotNull(createdLaptop, "Laptop should be created and not null");
+        assertNotNull(createdLaptop, "model.models.Laptop should be created and not null");
         assertEquals(brand, createdLaptop.getBrand(), "Brand should match");
         assertEquals(model, createdLaptop.getModel(), "Model should match");
         assertEquals(gigabyte, createdLaptop.getGigabyte(), "Gigabyte should match");
@@ -64,7 +63,7 @@ public class LaptopCreationTest {
                 break;
             }
         }
-        assertTrue(foundInCache, "Laptop should be found in cache");
+        assertTrue(foundInCache, "model.models.Laptop should be found in cache");
 
         // Hent laptops direkte fra databasen via model-interfacet for at verificere persistens
         List<Laptop> databaseLaptops = dataModel.getAllLaptops();
@@ -81,7 +80,7 @@ public class LaptopCreationTest {
                 break;
             }
         }
-        assertTrue(foundInDb, "Laptop should be found in database");
+        assertTrue(foundInDb, "model.models.Laptop should be found in database");
 
         // Print information om oprettet laptop til konsoloutput
         System.out.println("===== LAPTOP CREATION TEST =====");

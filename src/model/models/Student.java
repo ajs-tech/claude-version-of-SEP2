@@ -1,18 +1,16 @@
 package model.models;
 
 import model.enums.PerformanceTypeEnum;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
+import model.util.ModelObservable;
 
-import java.beans.PropertyChangeListener;
 import java.util.Date;
 import java.util.Objects;
 
 /**
  * Represents a student in the loan system.
- * Modified to use standard Java types instead of JavaFX properties.
+ * Uses Java's built-in Observable pattern.
  */
-public class Student implements PropertyChangeNotifier {
+public class Student extends ModelObservable {
     private int viaId;
     private String name;
     private Date degreeEndDate;
@@ -21,7 +19,6 @@ public class Student implements PropertyChangeNotifier {
     private int phoneNumber;
     private boolean hasLaptop;
     private PerformanceTypeEnum performanceNeeded;
-    private final PropertyChangeSupport changeSupport;
 
     /**
      * Creates a new student.
@@ -32,10 +29,13 @@ public class Student implements PropertyChangeNotifier {
      * @param viaId             Unique VIA ID
      * @param email             Email address
      * @param phoneNumber       Phone number
-     * @param performanceNeeded Laptop performance needs (HIGH/LOW)
+     * @param performanceNeeded model.models.Laptop performance needs (HIGH/LOW)
+     * @throws IllegalArgumentException if input validation fails
      */
     public Student(String name, Date degreeEndDate, String degreeTitle, int viaId,
                    String email, int phoneNumber, PerformanceTypeEnum performanceNeeded) {
+        validateInput(name, degreeEndDate, degreeTitle, viaId, email, phoneNumber, performanceNeeded);
+        
         this.name = name;
         this.degreeEndDate = degreeEndDate;
         this.degreeTitle = degreeTitle;
@@ -44,10 +44,68 @@ public class Student implements PropertyChangeNotifier {
         this.phoneNumber = phoneNumber;
         this.hasLaptop = false;
         this.performanceNeeded = performanceNeeded;
-        this.changeSupport = new PropertyChangeSupport(this);
+    }
+    
+    /**
+     * Validates all input parameters.
+     * Throws exception with clear message about which validation failed.
+     */
+    private void validateInput(String name, Date degreeEndDate, String degreeTitle, 
+                               int viaId, String email, int phoneNumber, 
+                               PerformanceTypeEnum performanceNeeded) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Student name cannot be empty");
+        }
+        
+        if (degreeEndDate == null) {
+            throw new IllegalArgumentException("Degree end date cannot be null");
+        }
+        
+        if (degreeTitle == null || degreeTitle.trim().isEmpty()) {
+            throw new IllegalArgumentException("Degree title cannot be empty");
+        }
+        
+        if (viaId <= 0 || !isValidViaId(viaId)) {
+            throw new IllegalArgumentException("Invalid VIA ID format");
+        }
+        
+        if (email == null || !isValidEmail(email)) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+        
+        if (phoneNumber <= 0 || !isValidPhoneNumber(phoneNumber)) {
+            throw new IllegalArgumentException("Invalid phone number format");
+        }
+        
+        if (performanceNeeded == null) {
+            throw new IllegalArgumentException("Performance needed cannot be null");
+        }
     }
 
-    // Value getters
+    /**
+     * Validates email format.
+     */
+    private boolean isValidEmail(String email) {
+        return email != null && email.matches("^[A-Za-z0-9+_.-]+@(.+)$");
+    }
+
+    /**
+     * Validates VIA ID format.
+     */
+    private boolean isValidViaId(int viaId) {
+        String viaIdStr = String.valueOf(viaId);
+        return viaIdStr.matches("^[0-9]{4,8}$");
+    }
+
+    /**
+     * Validates phone number format.
+     */
+    private boolean isValidPhoneNumber(int phoneNumber) {
+        String phoneStr = String.valueOf(phoneNumber);
+        return phoneStr.matches("^[0-9]{8,12}$");
+    }
+
+    // Getters
 
     public String getName() {
         return name;
@@ -84,49 +142,73 @@ public class Student implements PropertyChangeNotifier {
     // Setters
 
     public void setName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Student name cannot be empty");
+        }
+        
         String oldValue = this.name;
         this.name = name;
-        firePropertyChange("name", oldValue, name);
+        notifyPropertyChanged("name", oldValue, name);
     }
 
     public void setDegreeEndDate(Date degreeEndDate) {
+        if (degreeEndDate == null) {
+            throw new IllegalArgumentException("Degree end date cannot be null");
+        }
+        
         Date oldValue = this.degreeEndDate;
         this.degreeEndDate = degreeEndDate;
-        firePropertyChange("degreeEndDate", oldValue, degreeEndDate);
+        notifyPropertyChanged("degreeEndDate", oldValue, degreeEndDate);
     }
 
     public void setDegreeTitle(String degreeTitle) {
+        if (degreeTitle == null || degreeTitle.trim().isEmpty()) {
+            throw new IllegalArgumentException("Degree title cannot be empty");
+        }
+        
         String oldValue = this.degreeTitle;
         this.degreeTitle = degreeTitle;
-        firePropertyChange("degreeTitle", oldValue, degreeTitle);
+        notifyPropertyChanged("degreeTitle", oldValue, degreeTitle);
     }
 
     public void setEmail(String email) {
+        if (email == null || !isValidEmail(email)) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+        
         String oldValue = this.email;
         this.email = email;
-        firePropertyChange("email", oldValue, email);
+        notifyPropertyChanged("email", oldValue, email);
     }
 
     public void setPhoneNumber(int phoneNumber) {
+        if (phoneNumber <= 0 || !isValidPhoneNumber(phoneNumber)) {
+            throw new IllegalArgumentException("Invalid phone number format");
+        }
+        
         int oldValue = this.phoneNumber;
         this.phoneNumber = phoneNumber;
-        firePropertyChange("phoneNumber", oldValue, phoneNumber);
+        notifyPropertyChanged("phoneNumber", oldValue, phoneNumber);
     }
 
     public void setPerformanceNeeded(PerformanceTypeEnum performanceNeeded) {
+        if (performanceNeeded == null) {
+            throw new IllegalArgumentException("Performance needed cannot be null");
+        }
+        
         PerformanceTypeEnum oldValue = this.performanceNeeded;
         this.performanceNeeded = performanceNeeded;
-        firePropertyChange("performanceNeeded", oldValue, performanceNeeded);
+        notifyPropertyChanged("performanceNeeded", oldValue, performanceNeeded);
     }
 
     /**
-     * Toggles the hasLaptop value and notifies listeners.
+     * Toggles the hasLaptop value and notifies observers.
      */
     public void setHasLaptopToOpposite() {
         boolean oldValue = this.hasLaptop;
         boolean newValue = !oldValue;
         this.hasLaptop = newValue;
-        firePropertyChange("hasLaptop", oldValue, newValue);
+        notifyPropertyChanged("hasLaptop", oldValue, newValue);
     }
 
     /**
@@ -137,33 +219,7 @@ public class Student implements PropertyChangeNotifier {
     public void setHasLaptop(boolean hasLaptop) {
         boolean oldValue = this.hasLaptop;
         this.hasLaptop = hasLaptop;
-        firePropertyChange("hasLaptop", oldValue, hasLaptop);
-    }
-
-    // PropertyChangeNotifier implementation
-
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
-
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+        notifyPropertyChanged("hasLaptop", oldValue, hasLaptop);
     }
 
     @Override

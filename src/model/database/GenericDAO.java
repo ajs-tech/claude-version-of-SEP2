@@ -1,7 +1,5 @@
 package model.database;
 
-import model.exceptions.DatabaseException;
-
 import java.sql.SQLException;
 import java.util.List;
 

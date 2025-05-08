@@ -36,61 +36,61 @@
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:42:29 05-05-2025
 [INFO] Caches opdateret: 0 laptops, 0 studerende >> 12:42:30 05-05-2025
 [INFO] DataManager initialiseret >> 12:42:30 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: e5f06c98-4604-4352-9a39-4cc374c5890c] oprettet i database >> 12:42:30 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:42:30 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: e5f06c98-4604-4352-9a39-4cc374c5890c] oprettet i database >> 12:42:30 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:42:30 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 12:43:26 05-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 12:43:27 05-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:43:27 05-05-2025
 [INFO] Caches opdateret: 1 laptops, 0 studerende >> 12:43:27 05-05-2025
 [INFO] DataManager initialiseret >> 12:43:27 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: 4b7f617f-41b1-45ee-abdd-56eb99b32fce] oprettet i database >> 12:43:27 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:43:27 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: 4b7f617f-41b1-45ee-abdd-56eb99b32fce] oprettet i database >> 12:43:27 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:43:27 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 12:45:13 05-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 12:45:13 05-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:45:14 05-05-2025
 [INFO] Caches opdateret: 2 laptops, 0 studerende >> 12:45:14 05-05-2025
 [INFO] DataManager initialiseret >> 12:45:14 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: 6931c9a4-f6ca-4702-9c0b-5039c3fe5e0f] oprettet i database >> 12:45:14 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:45:14 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: 6931c9a4-f6ca-4702-9c0b-5039c3fe5e0f] oprettet i database >> 12:45:14 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:45:14 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 12:46:38 05-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 12:46:38 05-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:46:38 05-05-2025
 [INFO] Caches opdateret: 0 laptops, 0 studerende >> 12:46:38 05-05-2025
 [INFO] DataManager initialiseret >> 12:46:38 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: c7bf445f-eb18-412a-95f8-fbbcdf12854d] oprettet i database >> 12:46:38 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:46:38 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: c7bf445f-eb18-412a-95f8-fbbcdf12854d] oprettet i database >> 12:46:38 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:46:38 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 12:49:34 05-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 12:49:34 05-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:49:34 05-05-2025
 [INFO] Caches opdateret: 1 laptops, 0 studerende >> 12:49:34 05-05-2025
 [INFO] DataManager initialiseret >> 12:49:34 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: 1a3597bc-ad36-4680-8a5b-95a7a2fb77d9] oprettet i database >> 12:49:35 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:49:35 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: 1a3597bc-ad36-4680-8a5b-95a7a2fb77d9] oprettet i database >> 12:49:35 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:49:35 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 12:49:41 05-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 12:49:41 05-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 12:49:41 05-05-2025
 [INFO] Caches opdateret: 2 laptops, 0 studerende >> 12:49:41 05-05-2025
 [INFO] DataManager initialiseret >> 12:49:41 05-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: f35270ec-3130-4a1e-868a-b8b85013d415] oprettet i database >> 12:49:42 05-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 12:49:42 05-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: f35270ec-3130-4a1e-868a-b8b85013d415] oprettet i database >> 12:49:42 05-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 12:49:42 05-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 11:02:33 06-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 11:02:34 06-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 11:02:34 06-05-2025
 [INFO] Caches opdateret: 3 laptops, 0 studerende >> 11:02:34 06-05-2025
 [INFO] DataManager initialiseret >> 11:02:34 06-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: c1079122-f4f2-4b04-b157-84032a593edf] oprettet i database >> 11:02:35 06-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 11:02:35 06-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: c1079122-f4f2-4b04-b157-84032a593edf] oprettet i database >> 11:02:35 06-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 11:02:35 06-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 11:03:40 06-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 11:03:40 06-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 11:03:41 06-05-2025
 [INFO] Caches opdateret: 4 laptops, 0 studerende >> 11:03:41 06-05-2025
 [INFO] DataManager initialiseret >> 11:03:41 06-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: 52152527-c77e-465f-a21e-646a01243c88] oprettet i database >> 11:03:41 06-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 11:03:41 06-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: 52152527-c77e-465f-a21e-646a01243c88] oprettet i database >> 11:03:41 06-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 11:03:41 06-05-2025
 [INFO] Database forbindelsespool initialiseret med Neon PostgreSQL >> 11:04:16 06-05-2025
 [INFO] Indlæst 0 aktive reservationer fra databasen >> 11:04:16 06-05-2025
 [INFO] Indlæst køer fra databasen: 0 i lav-ydelses kø, 0 i høj-ydelses kø >> 11:04:17 06-05-2025
 [INFO] Caches opdateret: 0 laptops, 0 studerende >> 11:04:17 06-05-2025
 [INFO] DataManager initialiseret >> 11:04:17 06-05-2025
-[INFO] Laptop [Test Brand Test Model, ID: fc083634-a0e3-47c7-8d99-77a15c1b4efb] oprettet i database >> 11:04:17 06-05-2025
-[INFO] Laptop oprettet: Test Brand Test Model >> 11:04:17 06-05-2025
+[INFO] model.models.Laptop [Test Brand Test Model, ID: fc083634-a0e3-47c7-8d99-77a15c1b4efb] oprettet i database >> 11:04:17 06-05-2025
+[INFO] model.models.Laptop oprettet: Test Brand Test Model >> 11:04:17 06-05-2025

@@ -1,201 +1,271 @@
 package model.logic.reservationsLogic;
 
 import model.enums.PerformanceTypeEnum;
-import model.log.Log;
 import model.models.Student;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
 
-import java.beans.PropertyChangeListener;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Queue;
+import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
 
 /**
- * Generic implementering af kø-system for studerende.
- * Erstatter de separate queue-klasser med én implementering der kan håndtere begge køer.
- * Implementerer ren Java uden JavaFX-afhængigheder.
+ * Generic implementation of a queue system for students.
+ * Uses Java's built-in Observable pattern and thread-safe operations.
  */
-public class GenericQueue implements PropertyChangeNotifier {
+public class GenericQueue extends Observable {
+    private static final Logger logger = Logger.getLogger(GenericQueue.class.getName());
+    
+    // Event types for observer notifications
+    public static final String EVENT_STUDENT_ADDED = "STUDENT_ADDED";
+    public static final String EVENT_STUDENT_REMOVED = "STUDENT_REMOVED";
+    public static final String EVENT_QUEUE_SIZE_CHANGED = "QUEUE_SIZE_CHANGED";
+    
     private final Queue<Student> queue;
     private final PerformanceTypeEnum performanceType;
-    private final Log log;
-    private final PropertyChangeSupport changeSupport;
-
+    private final Lock queueLock;
+    
     /**
-     * Opretter en ny kø for en specificeret performance type.
+     * Creates a new queue for a specified performance type.
      *
-     * @param performanceType Typen af kø (HIGH/LOW)
+     * @param performanceType The type of queue (HIGH/LOW)
      */
     public GenericQueue(PerformanceTypeEnum performanceType) {
         this.queue = new ArrayDeque<>();
         this.performanceType = performanceType;
-        this.log = Log.getInstance();
-        this.changeSupport = new PropertyChangeSupport(this);
+        this.queueLock = new ReentrantLock();
     }
-
+    
     /**
-     * Returnerer størrelsen af køen.
+     * Returns the size of the queue.
      *
-     * @return Antal studerende i køen
+     * @return Number of students in the queue
      */
     public int getQueueSize() {
-        return queue.size();
+        queueLock.lock();
+        try {
+            return queue.size();
+        } finally {
+            queueLock.unlock();
+        }
     }
-
+    
     /**
-     * Henter den næste student i køen uden at fjerne dem.
+     * Gets the next student in the queue without removing them.
      *
-     * @return Den næste student i køen, eller null hvis køen er tom
+     * @return The next student in the queue, or null if the queue is empty
      */
     public Student peekNextInLine() {
-        return queue.peek();
+        queueLock.lock();
+        try {
+            return queue.peek();
+        } finally {
+            queueLock.unlock();
+        }
     }
-
+    
     /**
-     * Henter og fjerner den næste student i køen.
+     * Gets and removes the next student in the queue.
      *
-     * @return Den næste student i køen, eller null hvis køen er tom
+     * @return The next student in the queue, or null if the queue is empty
      */
     public Student getAndRemoveNextInLine() {
-        Student student = queue.poll();
-
-        if (student != null) {
-            log.addToLog("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
-                    "] fjernet fra " + getQueueTypeName() + "-ydelses kø");
-
-            // Notificér om at køen er blevet ændret
-            firePropertyChange("queueSize", getQueueSize() + 1, getQueueSize());
-            firePropertyChange("studentRemoved", null, student);
+        queueLock.lock();
+        try {
+            Student student = queue.poll();
+            
+            if (student != null) {
+                logger.info("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
+                        "] removed from " + getQueueTypeName() + " performance queue");
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new QueueEvent(EVENT_STUDENT_REMOVED, student));
+                
+                int newSize = queue.size();
+                setChanged();
+                notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED, newSize + 1, newSize));
+            }
+            
+            return student;
+        } finally {
+            queueLock.unlock();
         }
-
-        return student;
     }
-
+    
     /**
-     * Tilføjer en student til køen.
+     * Adds a student to the queue.
      *
-     * @param student Studenten der skal tilføjes
+     * @param student The student to add
+     * @throws IllegalArgumentException if student is null
      */
     public void addToQueue(Student student) {
         if (student == null) {
             throw new IllegalArgumentException("Student cannot be null");
         }
-
-        int oldSize = getQueueSize();
-        queue.offer(student);
-
-        log.addToLog("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
-                "] tilføjet til " + getQueueTypeName() + "-ydelses kø");
-
-        // Notificér om at køen er blevet ændret
-        firePropertyChange("queueSize", oldSize, getQueueSize());
-        firePropertyChange("studentAdded", null, student);
+        
+        queueLock.lock();
+        try {
+            int oldSize = queue.size();
+            queue.offer(student);
+            
+            logger.info("Student [" + student.getName() + ", VIA ID: " + student.getViaId() +
+                    "] added to " + getQueueTypeName() + " performance queue");
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new QueueEvent(EVENT_STUDENT_ADDED, student));
+            
+            int newSize = queue.size();
+            setChanged();
+            notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED, oldSize, newSize));
+        } finally {
+            queueLock.unlock();
+        }
     }
-
+    
     /**
-     * Returnerer en liste af alle studerende i køen uden at fjerne dem.
+     * Returns a list of all students in the queue without removing them.
      *
-     * @return Liste af studerende i køen
+     * @return List of students in the queue
      */
     public List<Student> getAllStudentsInQueue() {
-        return new ArrayList<>(queue);
+        queueLock.lock();
+        try {
+            return new ArrayList<>(queue);
+        } finally {
+            queueLock.unlock();
+        }
     }
-
+    
     /**
-     * Fjerner en specifik student fra køen baseret på VIA ID.
+     * Removes a specific student from the queue based on VIA ID.
      *
-     * @param viaId VIA ID for den student der skal fjernes
-     * @return true hvis studenten blev fjernet, ellers false
+     * @param viaId VIA ID of the student to remove
+     * @return true if the student was removed, false otherwise
      */
     public boolean removeStudentById(int viaId) {
-        Student studentToRemove = null;
-
-        // Find studenten med det givne ID
-        for (Student student : queue) {
-            if (student.getViaId() == viaId) {
-                studentToRemove = student;
-                break;
+        queueLock.lock();
+        try {
+            Student studentToRemove = null;
+            
+            // Find the student with the given ID
+            for (Student student : queue) {
+                if (student.getViaId() == viaId) {
+                    studentToRemove = student;
+                    break;
+                }
             }
-        }
-
-        // Fjern studenten hvis den blev fundet
-        if (studentToRemove != null) {
-            int oldSize = getQueueSize();
-            boolean removed = queue.remove(studentToRemove);
-
-            if (removed) {
-                log.addToLog("Student [" + studentToRemove.getName() + ", VIA ID: " +
-                        studentToRemove.getViaId() + "] fjernet fra " + getQueueTypeName() + "-ydelses kø");
-
-                // Notificér om at køen er blevet ændret
-                firePropertyChange("queueSize", oldSize, getQueueSize());
-                firePropertyChange("studentRemoved", studentToRemove, null);
+            
+            // Remove the student if found
+            if (studentToRemove != null) {
+                int oldSize = queue.size();
+                boolean removed = queue.remove(studentToRemove);
+                
+                if (removed) {
+                    logger.info("Student [" + studentToRemove.getName() + ", VIA ID: " +
+                            studentToRemove.getViaId() + "] removed from " + getQueueTypeName() + " performance queue");
+                    
+                    // Notify observers
+                    setChanged();
+                    notifyObservers(new QueueEvent(EVENT_STUDENT_REMOVED, studentToRemove));
+                    
+                    int newSize = queue.size();
+                    setChanged();
+                    notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED, oldSize, newSize));
+                }
+                
+                return removed;
             }
-
-            return removed;
+            
+            return false;
+        } finally {
+            queueLock.unlock();
         }
-
-        return false;
     }
-
+    
     /**
-     * Tjekker om køen indeholder en student med et specifikt VIA ID.
+     * Checks if the queue contains a student with a specific VIA ID.
      *
-     * @param viaId VIA ID der skal tjekkes for
-     * @return true hvis studenten er i køen, ellers false
+     * @param viaId VIA ID to check for
+     * @return true if the student is in the queue, false otherwise
      */
     public boolean containsStudent(int viaId) {
-        for (Student student : queue) {
-            if (student.getViaId() == viaId) {
-                return true;
+        queueLock.lock();
+        try {
+            for (Student student : queue) {
+                if (student.getViaId() == viaId) {
+                    return true;
+                }
             }
+            return false;
+        } finally {
+            queueLock.unlock();
         }
-        return false;
     }
-
+    
     /**
-     * Returnerer typen af kø (HIGH/LOW).
+     * Returns the type of queue (HIGH/LOW).
      *
-     * @return Køens performancetype
+     * @return The queue's performance type
      */
     public PerformanceTypeEnum getPerformanceType() {
         return performanceType;
     }
-
+    
     /**
-     * Returnerer en læservenlig streng for køens type.
+     * Returns a human-readable string for the queue's type.
      *
-     * @return "høj" for HIGH performancetype, "lav" for LOW
+     * @return "high" for HIGH performance type, "low" for LOW
      */
     private String getQueueTypeName() {
-        return performanceType == PerformanceTypeEnum.HIGH ? "høj" : "lav";
+        return performanceType == PerformanceTypeEnum.HIGH ? "high" : "low";
     }
-
-    // PropertyChangeNotifier implementation
-
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
+    
+    /**
+     * Event class for queue operations.
+     */
+    public static class QueueEvent {
+        private final String eventType;
+        private final Student student;
+        
+        public QueueEvent(String eventType, Student student) {
+            this.eventType = eventType;
+            this.student = student;
+        }
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public Student getStudent() {
+            return student;
+        }
     }
-
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
-
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+    
+    /**
+     * Event class for queue size changes.
+     */
+    public static class QueueSizeEvent {
+        private final String eventType;
+        private final int oldSize;
+        private final int newSize;
+        
+        public QueueSizeEvent(String eventType, int oldSize, int newSize) {
+            this.eventType = eventType;
+            this.oldSize = oldSize;
+            this.newSize = newSize;
+        }
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public int getOldSize() {
+            return oldSize;
+        }
+        
+        public int getNewSize() {
+            return newSize;
+        }
     }
 }

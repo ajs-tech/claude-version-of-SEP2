@@ -4,87 +4,78 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Repræsenterer en enkelt loghændelse med tekst, tidspunkt og niveau.
+ * Represents a single log entry with text, timestamp, and level.
  */
-public class LogLine {
+class LogLine {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss dd-MM-yyyy");
-
+    
     private final String text;
     private final LocalDateTime timestamp;
     private final Log.LogLevel logLevel;
-
+    
     /**
-     * Opretter en ny LogLine med specificeret niveau.
+     * Creates a new LogLine with specified level.
      *
-     * @param text     Logteksten
-     * @param logLevel Log-niveauet
+     * @param text     The log text
+     * @param logLevel The log level
      */
     public LogLine(String text, Log.LogLevel logLevel) {
         this.text = text;
         this.timestamp = LocalDateTime.now();
         this.logLevel = logLevel;
     }
-
+    
     /**
-     * Opretter en ny LogLine med standard INFO niveau.
+     * Gets the log text.
      *
-     * @param text Logteksten
-     */
-    public LogLine(String text) {
-        this(text, Log.LogLevel.INFO);
-    }
-
-    /**
-     * Returnerer logteksten.
-     *
-     * @return Logteksten
+     * @return The log text
      */
     public String getText() {
         return text;
     }
-
+    
     /**
-     * Returnerer tidspunktet.
+     * Gets the time.
      *
-     * @return Tidspunktet som streng (TT:MM:SS)
+     * @return The time as a string (HH:MM:SS)
      */
     public String getTime() {
         return timestamp.format(TIME_FORMATTER);
     }
-
+    
     /**
-     * Returnerer tidspunktet og datoen.
+     * Gets the date and time.
      *
-     * @return Tidspunktet og datoen som streng (TT:MM:SS DD-MM-ÅÅÅÅ)
+     * @return The date and time as a string (HH:MM:SS DD-MM-YYYY)
      */
     public String getDateTime() {
         return timestamp.format(DATE_TIME_FORMATTER);
     }
-
+    
     /**
-     * Returnerer tidsstemplet.
+     * Gets the timestamp.
      *
-     * @return Tidsstemplet
+     * @return The timestamp
      */
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
-
+    
     /**
-     * Returnerer log-niveauet.
+     * Gets the log level.
      *
-     * @return Log-niveauet
+     * @return The log level
      */
     public Log.LogLevel getLogLevel() {
         return logLevel;
     }
-
+    
     /**
-     * Returnerer en formateret streng-repræsentation af loghændelsen.
-     * Format: [NIVEAU] Tekst >> TT:MM:SS DD-MM-ÅÅÅÅ
+     * Returns a formatted string representation of the log entry.
+     * Format: [LEVEL] Text >> HH:MM:SS DD-MM-YYYY
      *
-     * @return Formateret log-streng
+     * @return Formatted log string
      */
     @Override
     public String toString() {

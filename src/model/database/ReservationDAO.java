@@ -1,59 +1,72 @@
 package model.database;
 
 import model.enums.ReservationStatusEnum;
-import model.events.SystemEvents;
-import model.log.Log;
 import model.models.Laptop;
 import model.models.Reservation;
 import model.models.Student;
-import model.util.EventBus;
 
 import java.sql.*;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.Date;
-import java.util.List;
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Data Access Object for Reservation entiteter med forbedret implementering.
- * Implementerer GenericDAO for standardiserede databaseoperationer.
- * Inkluderer robust transaktionshåndtering.
+ * Data Access Object for Reservation entities.
+ * Uses Java's built-in Observable pattern.
  */
-public class ReservationDAO implements GenericDAO<Reservation, UUID> {
+public class ReservationDAO extends Observable {
+    // Event types for observer notifications
+    public static final String EVENT_RESERVATION_CREATED = "RESERVATION_CREATED";
+    public static final String EVENT_RESERVATION_UPDATED = "RESERVATION_UPDATED";
+    public static final String EVENT_RESERVATION_DELETED = "RESERVATION_DELETED";
+    public static final String EVENT_RESERVATION_STATUS_CHANGED = "RESERVATION_STATUS_CHANGED";
+    public static final String EVENT_RESERVATION_ERROR = "RESERVATION_ERROR";
+    
     private static final Logger logger = Logger.getLogger(ReservationDAO.class.getName());
-    private static final Log log = Log.getInstance();
-    private static final EventBus eventBus = EventBus.getInstance();
-
+    
+    // Singleton instance with lazy initialization
+    private static ReservationDAO instance;
+    
     // DAO dependencies
     private final LaptopDAO laptopDAO;
     private final StudentDAO studentDAO;
-
+    
     /**
-     * Konstruktør der initialiserer DAO dependencies.
+     * Private constructor for Singleton pattern.
      */
-    public ReservationDAO() {
-        this.laptopDAO = new LaptopDAO();
-        this.studentDAO = new StudentDAO();
+    private ReservationDAO() {
+        this.laptopDAO = LaptopDAO.getInstance();
+        this.studentDAO = StudentDAO.getInstance();
     }
-
+    
     /**
-     * Henter alle reservationer fra databasen.
+     * Gets the singleton instance.
      *
-     * @return Liste af reservationer
-     * @throws SQLException hvis der er problemer med databasen
+     * @return The singleton instance
      */
-    @Override
+    public static synchronized ReservationDAO getInstance() {
+        if (instance == null) {
+            instance = new ReservationDAO();
+        }
+        return instance;
+    }
+    
+    /**
+     * Gets all reservations from the database.
+     *
+     * @return List of reservations
+     * @throws SQLException if a database error occurs
+     */
     public List<Reservation> getAll() throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.reservation_uuid, r.status, r.laptop_uuid, r.student_via_id, r.creation_date " +
                 "FROM Reservation r";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
-
+            
             while (rs.next()) {
                 Reservation reservation = mapResultSetToReservation(rs);
                 if (reservation != null) {
@@ -61,226 +74,180 @@ public class ReservationDAO implements GenericDAO<Reservation, UUID> {
                 }
             }
         } catch (SQLException e) {
-            handleSQLException("Fejl ved hentning af alle reservationer", e);
+            handleSQLException("Error retrieving all reservations", e);
             throw e;
         }
+        
         return reservations;
     }
-
+    
     /**
-     * Henter en specifik reservation baseret på UUID.
+     * Gets a reservation by ID.
      *
-     * @param id Reservation UUID
-     * @return Reservation objekt eller null hvis ikke fundet
-     * @throws SQLException hvis der er problemer med databasen
+     * @param id The reservation's UUID
+     * @return The reservation or null if not found
+     * @throws SQLException if a database error occurs
      */
-    @Override
     public Reservation getById(UUID id) throws SQLException {
         String sql = "SELECT reservation_uuid, status, laptop_uuid, student_via_id, creation_date " +
                 "FROM Reservation WHERE reservation_uuid = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, id.toString());
-
+            
+            stmt.setObject(1, id);
+            
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return mapResultSetToReservation(rs);
                 }
             }
         } catch (SQLException e) {
-            handleSQLException("Fejl ved hentning af reservation med ID " + id, e);
+            handleSQLException("Error retrieving reservation with ID " + id, e);
             throw e;
         }
+        
         return null;
     }
-
+    
     /**
-     * Indsætter en ny reservation i databasen.
+     * Inserts a new reservation into the database.
      *
-     * @param reservation Reservation objekt
-     * @return true hvis operationen lykkedes
-     * @throws SQLException hvis der er problemer med databasen
+     * @param reservation The reservation to insert
+     * @return true if insertion was successful
+     * @throws SQLException if a database error occurs
      */
-    @Override
     public boolean insert(Reservation reservation) throws SQLException {
         String sql = "INSERT INTO Reservation (reservation_uuid, laptop_uuid, student_via_id, status, creation_date) " +
                 "VALUES (?, ?, ?, ?, ?)";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, reservation.getReservationId().toString());
-            stmt.setString(2, reservation.getLaptop().getId().toString());
+            
+            stmt.setObject(1, reservation.getReservationId());
+            stmt.setObject(2, reservation.getLaptop().getId());
             stmt.setInt(3, reservation.getStudent().getViaId());
             stmt.setString(4, reservation.getStatus().name());
             stmt.setTimestamp(5, new Timestamp(reservation.getCreationDate().getTime()));
-
+            
             int affectedRows = stmt.executeUpdate();
-
-            boolean success = affectedRows > 0;
-            if (success) {
-                log.info("Reservation [ID: " + reservation.getReservationId() + "] oprettet: " +
-                        reservation.getStudent().getName() + " -> " +
-                        reservation.getLaptop().getBrand() + " " + reservation.getLaptop().getModel());
-
-                // Post event
-                eventBus.post(new SystemEvents.ReservationCreatedEvent(reservation));
+            
+            if (affectedRows > 0) {
+                logger.info("Reservation created: " + reservation.getReservationId() +
+                        " (Student: " + reservation.getStudent().getName() +
+                        ", model.models.Laptop: " + reservation.getLaptop().getBrand() + " " + reservation.getLaptop().getModel() + ")");
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new DatabaseEvent(EVENT_RESERVATION_CREATED, reservation));
+                
+                return true;
             } else {
-                log.warning("Kunne ikke oprette reservation i database: " + reservation.getReservationId());
+                logger.warning("Failed to create reservation in database: " + reservation.getReservationId());
+                return false;
             }
-
-            return success;
         } catch (SQLException e) {
-            handleSQLException("Fejl ved indsættelse af reservation: " + reservation.getReservationId(), e);
+            handleSQLException("Error inserting reservation: " + reservation.getReservationId(), e);
             throw e;
         }
     }
-
+    
     /**
-     * Opdaterer en eksisterende reservation.
+     * Updates an existing reservation in the database.
      *
-     * @param reservation Reservation objekt med opdaterede oplysninger
-     * @return true hvis operationen lykkedes
-     * @throws SQLException hvis der er problemer med databasen
+     * @param reservation The reservation with updated information
+     * @return true if update was successful
+     * @throws SQLException if a database error occurs
      */
-    @Override
     public boolean update(Reservation reservation) throws SQLException {
         String sql = "UPDATE Reservation SET status = ? WHERE reservation_uuid = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
+            
             stmt.setString(1, reservation.getStatus().name());
-            stmt.setString(2, reservation.getReservationId().toString());
-
+            stmt.setObject(2, reservation.getReservationId());
+            
             int affectedRows = stmt.executeUpdate();
-
-            boolean success = affectedRows > 0;
-            if (success) {
-                log.info("Reservation [ID: " + reservation.getReservationId() + "] opdateret til status: " +
-                        reservation.getStatus().getDisplayName());
-
-                // Post event om statusændring - vent med at hente den gamle status her
-                // da det ville kræve en ekstra databaseforespørgsel
+            
+            if (affectedRows > 0) {
+                logger.info("Reservation updated: " + reservation.getReservationId() +
+                        " (Status: " + reservation.getStatus().getDisplayName() + ")");
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new DatabaseEvent(EVENT_RESERVATION_UPDATED, reservation));
+                
+                return true;
             } else {
-                log.warning("Kunne ikke opdatere reservation i database: " + reservation.getReservationId());
+                logger.warning("Failed to update reservation in database: " + reservation.getReservationId());
+                return false;
             }
-
-            return success;
         } catch (SQLException e) {
-            handleSQLException("Fejl ved opdatering af reservation: " + reservation.getReservationId(), e);
+            handleSQLException("Error updating reservation: " + reservation.getReservationId(), e);
             throw e;
         }
     }
-
+    
     /**
-     * Sletter en reservation baseret på UUID.
+     * Deletes a reservation from the database.
      *
-     * @param id Reservation UUID
-     * @return true hvis operationen lykkedes
-     * @throws SQLException hvis der er problemer med databasen
+     * @param id The reservation's UUID
+     * @return true if deletion was successful
+     * @throws SQLException if a database error occurs
      */
-    @Override
     public boolean delete(UUID id) throws SQLException {
-        // Først hent reservationen så vi kan sende event efter sletning
+        // First get the reservation to notify observers after deletion
         Reservation reservation = getById(id);
+        
         if (reservation == null) {
             return false;
         }
-
+        
         String sql = "DELETE FROM Reservation WHERE reservation_uuid = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, id.toString());
-
+            
+            stmt.setObject(1, id);
+            
             int affectedRows = stmt.executeUpdate();
-
-            boolean success = affectedRows > 0;
-            if (success) {
-                log.info("Reservation [ID: " + id + "] slettet fra database");
-
-                // Her kunne man poste et ReservationDeletedEvent hvis det var defineret
+            
+            if (affectedRows > 0) {
+                logger.info("Reservation deleted: " + id);
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new DatabaseEvent(EVENT_RESERVATION_DELETED, reservation));
+                
+                return true;
             } else {
-                log.warning("Kunne ikke slette reservation fra database: " + id);
+                logger.warning("Failed to delete reservation from database: " + id);
+                return false;
             }
-
-            return success;
         } catch (SQLException e) {
-            handleSQLException("Fejl ved sletning af reservation: " + id, e);
+            handleSQLException("Error deleting reservation: " + id, e);
             throw e;
         }
     }
-
+    
     /**
-     * Tæller antal reservationer i databasen.
+     * Gets all reservations for a specific student.
      *
-     * @return Antal reservationer
-     * @throws SQLException hvis der er problemer med databasen
-     */
-    @Override
-    public int count() throws SQLException {
-        String sql = "SELECT COUNT(*) FROM Reservation";
-
-        try (Connection conn = DatabaseConnection.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
-            return 0;
-        } catch (SQLException e) {
-            handleSQLException("Fejl ved optælling af reservationer", e);
-            throw e;
-        }
-    }
-
-    /**
-     * Tjekker om en reservation eksisterer i databasen.
-     *
-     * @param id Reservation UUID
-     * @return true hvis reservationen findes
-     * @throws SQLException hvis der er problemer med databasen
-     */
-    @Override
-    public boolean exists(UUID id) throws SQLException {
-        String sql = "SELECT 1 FROM Reservation WHERE reservation_uuid = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, id.toString());
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-        } catch (SQLException e) {
-            handleSQLException("Fejl ved tjek af reservations eksistens: " + id, e);
-            throw e;
-        }
-    }
-
-    /**
-     * Henter alle reservationer for en bestemt student.
-     *
-     * @param studentViaId Student VIA ID
-     * @return Liste af reservationer for den pågældende student
-     * @throws SQLException hvis der er problemer med databasen
+     * @param studentViaId The student's VIA ID
+     * @return List of reservations for the student
+     * @throws SQLException if a database error occurs
      */
     public List<Reservation> getByStudentId(int studentViaId) throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT reservation_uuid, status, laptop_uuid, student_via_id, creation_date " +
                 "FROM Reservation WHERE student_via_id = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
+            
             stmt.setInt(1, studentViaId);
-
+            
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     Reservation reservation = mapResultSetToReservation(rs);
@@ -290,29 +257,30 @@ public class ReservationDAO implements GenericDAO<Reservation, UUID> {
                 }
             }
         } catch (SQLException e) {
-            handleSQLException("Fejl ved hentning af reservationer for student " + studentViaId, e);
+            handleSQLException("Error retrieving reservations for student " + studentViaId, e);
             throw e;
         }
+        
         return reservations;
     }
-
+    
     /**
-     * Henter alle reservationer for en bestemt laptop.
+     * Gets all reservations for a specific laptop.
      *
-     * @param laptopId Laptop UUID
-     * @return Liste af reservationer for den pågældende laptop
-     * @throws SQLException hvis der er problemer med databasen
+     * @param laptopId The laptop's UUID
+     * @return List of reservations for the laptop
+     * @throws SQLException if a database error occurs
      */
     public List<Reservation> getByLaptopId(UUID laptopId) throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT reservation_uuid, status, laptop_uuid, student_via_id, creation_date " +
                 "FROM Reservation WHERE laptop_uuid = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, laptopId.toString());
-
+            
+            stmt.setObject(1, laptopId);
+            
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     Reservation reservation = mapResultSetToReservation(rs);
@@ -322,28 +290,29 @@ public class ReservationDAO implements GenericDAO<Reservation, UUID> {
                 }
             }
         } catch (SQLException e) {
-            handleSQLException("Fejl ved hentning af reservationer for laptop " + laptopId, e);
+            handleSQLException("Error retrieving reservations for laptop " + laptopId, e);
             throw e;
         }
+        
         return reservations;
     }
-
+    
     /**
-     * Henter alle aktive reservationer.
+     * Gets all active reservations.
      *
-     * @return Liste af aktive reservationer
-     * @throws SQLException hvis der er problemer med databasen
+     * @return List of active reservations
+     * @throws SQLException if a database error occurs
      */
     public List<Reservation> getActiveReservations() throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT reservation_uuid, status, laptop_uuid, student_via_id, creation_date " +
                 "FROM Reservation WHERE status = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection();
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
+            
             stmt.setString(1, ReservationStatusEnum.ACTIVE.name());
-
+            
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     Reservation reservation = mapResultSetToReservation(rs);
@@ -353,177 +322,244 @@ public class ReservationDAO implements GenericDAO<Reservation, UUID> {
                 }
             }
         } catch (SQLException e) {
-            handleSQLException("Fejl ved hentning af aktive reservationer", e);
+            handleSQLException("Error retrieving active reservations", e);
             throw e;
         }
+        
         return reservations;
     }
-
+    
     /**
-     * Opret reservation med transaktionssupport, der opdaterer laptop og student status.
+     * Creates a reservation with transaction support, updating laptop and student status.
      *
-     * @param reservation Reservationsobjekt at oprette
-     * @return true hvis operationen lykkedes
-     * @throws SQLException hvis der er problemer med databasen
+     * @param reservation The reservation to create
+     * @return true if the operation was successful
+     * @throws SQLException if a database error occurs
      */
     public boolean createReservationWithTransaction(Reservation reservation) throws SQLException {
         Connection conn = null;
+        
         try {
-            conn = DatabaseConnection.getConnection();
+            conn = DatabaseConnection.getInstance().getConnection();
             conn.setAutoCommit(false);
-
-            // 1. Indsæt reservation
+            
+            // 1. Insert reservation
             String sql = "INSERT INTO Reservation (reservation_uuid, laptop_uuid, student_via_id, status, creation_date) " +
                     "VALUES (?, ?, ?, ?, ?)";
+            
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setString(1, reservation.getReservationId().toString());
-                stmt.setString(2, reservation.getLaptop().getId().toString());
+                stmt.setObject(1, reservation.getReservationId());
+                stmt.setObject(2, reservation.getLaptop().getId());
                 stmt.setInt(3, reservation.getStudent().getViaId());
                 stmt.setString(4, reservation.getStatus().name());
                 stmt.setTimestamp(5, new Timestamp(reservation.getCreationDate().getTime()));
                 stmt.executeUpdate();
             }
-
-            // 2. Opdater laptop tilstand
+            
+            // 2. Update laptop state
             sql = "UPDATE Laptop SET state = 'LoanedState' WHERE laptop_uuid = ?";
+            
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setString(1, reservation.getLaptop().getId().toString());
+                stmt.setObject(1, reservation.getLaptop().getId());
                 stmt.executeUpdate();
             }
-
-            // 3. Opdater student has_laptop
+            
+            // 3. Update student has_laptop
             sql = "UPDATE Student SET has_laptop = TRUE WHERE via_id = ?";
+            
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setInt(1, reservation.getStudent().getViaId());
                 stmt.executeUpdate();
             }
-
-            // Commit transaktionen
+            
+            // Commit the transaction
             conn.commit();
-
-            log.info("Reservation [ID: " + reservation.getReservationId() + "] oprettet med transaktion: " +
-                    reservation.getStudent().getName() + " -> " +
-                    reservation.getLaptop().getBrand() + " " + reservation.getLaptop().getModel());
-
-            // Post event
-            eventBus.post(new SystemEvents.ReservationCreatedEvent(reservation));
-
+            
+            logger.info("Reservation created with transaction: " + reservation.getReservationId() +
+                    " (Student: " + reservation.getStudent().getName() +
+                    ", model.models.Laptop: " + reservation.getLaptop().getBrand() + " " + reservation.getLaptop().getModel() + ")");
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new DatabaseEvent(EVENT_RESERVATION_CREATED, reservation));
+            
             return true;
         } catch (SQLException e) {
             if (conn != null) {
                 try {
                     conn.rollback();
-                    log.warning("Transaktion rullet tilbage: " + e.getMessage());
+                    logger.warning("Transaction rolled back: " + e.getMessage());
                 } catch (SQLException ex) {
-                    log.error("Fejl under rollback: " + ex.getMessage());
+                    logger.log(Level.SEVERE, "Error during rollback: " + ex.getMessage(), ex);
                 }
             }
-            handleSQLException("Fejl ved oprettelse af reservation med transaktion: " +
-                    reservation.getReservationId(), e);
+            
+            handleSQLException("Error creating reservation with transaction: " + reservation.getReservationId(), e);
             throw e;
         } finally {
             if (conn != null) {
                 try {
                     conn.setAutoCommit(true);
-                    conn.close();
                 } catch (SQLException e) {
-                    log.warning("Fejl ved nulstilling af forbindelse: " + e.getMessage());
+                    logger.log(Level.WARNING, "Error resetting auto-commit: " + e.getMessage(), e);
                 }
             }
         }
     }
-
+    
     /**
-     * Opdater reservationsstatus med transaktion, der også opdaterer laptop og student status.
+     * Updates reservation status with transaction support, updating laptop and student status.
      *
-     * @param reservation Reservationsobjekt med den nye status
-     * @return true hvis operationen lykkedes
-     * @throws SQLException hvis der er problemer med databasen
+     * @param reservation The reservation with the new status
+     * @return true if the operation was successful
+     * @throws SQLException if a database error occurs
      */
     public boolean updateStatusWithTransaction(Reservation reservation) throws SQLException {
         Connection conn = null;
+        
         try {
-            conn = DatabaseConnection.getConnection();
+            conn = DatabaseConnection.getInstance().getConnection();
             conn.setAutoCommit(false);
-
-            // 1. Hent den nuværende status
+            
+            // 1. Get the current status
             String selectSql = "SELECT status FROM Reservation WHERE reservation_uuid = ?";
             ReservationStatusEnum currentStatus;
+            
             try (PreparedStatement stmt = conn.prepareStatement(selectSql)) {
-                stmt.setString(1, reservation.getReservationId().toString());
+                stmt.setObject(1, reservation.getReservationId());
+                
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (!rs.next()) {
-                        return false; // Reservation findes ikke
+                        return false; // Reservation not found
                     }
                     currentStatus = ReservationStatusEnum.valueOf(rs.getString("status"));
                 }
             }
-
-            // 2. Opdater reservation status
+            
+            // 2. Update reservation status
             String updateSql = "UPDATE Reservation SET status = ? WHERE reservation_uuid = ?";
+            
             try (PreparedStatement stmt = conn.prepareStatement(updateSql)) {
                 stmt.setString(1, reservation.getStatus().name());
-                stmt.setString(2, reservation.getReservationId().toString());
+                stmt.setObject(2, reservation.getReservationId());
                 stmt.executeUpdate();
             }
-
-            // 3. Hvis status ændres fra Active til completed eller cancelled
+            
+            // 3. If status changes from Active to Completed or Cancelled
             if (currentStatus == ReservationStatusEnum.ACTIVE &&
                     (reservation.getStatus() == ReservationStatusEnum.COMPLETED ||
                             reservation.getStatus() == ReservationStatusEnum.CANCELLED)) {
-
-                // Opdater laptop tilstand til Available
-                String laptopSql = "UPDATE Laptop SET state = 'AvailableState' WHERE laptop_uuid = ?";
+                
+                // Update laptop state to Available
+                String laptopSql = "UPDATE Laptop SET state = 'model.models.AvailableState' WHERE laptop_uuid = ?";
+                
                 try (PreparedStatement stmt = conn.prepareStatement(laptopSql)) {
-                    stmt.setString(1, reservation.getLaptop().getId().toString());
+                    stmt.setObject(1, reservation.getLaptop().getId());
                     stmt.executeUpdate();
                 }
-
-                // Opdater student has_laptop status
+                
+                // Update student has_laptop status
                 String studentSql = "UPDATE Student SET has_laptop = FALSE WHERE via_id = ?";
+                
                 try (PreparedStatement stmt = conn.prepareStatement(studentSql)) {
                     stmt.setInt(1, reservation.getStudent().getViaId());
                     stmt.executeUpdate();
                 }
             }
-
-            // Commit transaktionen
+            
+            // Commit the transaction
             conn.commit();
-
-            log.info("Reservation [ID: " + reservation.getReservationId() + "] status ændret fra " +
-                    currentStatus.getDisplayName() + " til " + reservation.getStatus().getDisplayName());
-
-            // Post event
-            eventBus.post(new SystemEvents.ReservationStatusChangedEvent(
-                    reservation, currentStatus, reservation.getStatus()));
-
+            
+            logger.info("Reservation status updated from " + currentStatus.getDisplayName() + 
+                    " to " + reservation.getStatus().getDisplayName() + 
+                    " (ID: " + reservation.getReservationId() + ")");
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new ReservationStatusEvent(
+                    EVENT_RESERVATION_STATUS_CHANGED,
+                    reservation,
+                    currentStatus,
+                    reservation.getStatus()
+            ));
+            
             return true;
         } catch (SQLException e) {
             if (conn != null) {
                 try {
                     conn.rollback();
-                    log.warning("Transaktion rullet tilbage: " + e.getMessage());
+                    logger.warning("Transaction rolled back: " + e.getMessage());
                 } catch (SQLException ex) {
-                    log.error("Fejl under rollback: " + ex.getMessage());
+                    logger.log(Level.SEVERE, "Error during rollback: " + ex.getMessage(), ex);
                 }
             }
-            handleSQLException("Fejl ved opdatering af reservationsstatus med transaktion: " +
-                    reservation.getReservationId(), e);
+            
+            handleSQLException("Error updating reservation status with transaction: " + reservation.getReservationId(), e);
             throw e;
         } finally {
             if (conn != null) {
                 try {
                     conn.setAutoCommit(true);
-                    conn.close();
                 } catch (SQLException e) {
-                    log.warning("Fejl ved nulstilling af forbindelse: " + e.getMessage());
+                    logger.log(Level.WARNING, "Error resetting auto-commit: " + e.getMessage(), e);
                 }
             }
         }
     }
-
+    
     /**
-     * Konverterer ResultSet til Reservation objekt.
+     * Counts the number of reservations in the database.
+     *
+     * @return The number of reservations
+     * @throws SQLException if a database error occurs
+     */
+    public int count() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM Reservation";
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+            return 0;
+        } catch (SQLException e) {
+            handleSQLException("Error counting reservations", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Checks if a reservation exists in the database.
+     *
+     * @param id The reservation's UUID
+     * @return true if the reservation exists
+     * @throws SQLException if a database error occurs
+     */
+    public boolean exists(UUID id) throws SQLException {
+        String sql = "SELECT 1 FROM Reservation WHERE reservation_uuid = ?";
+        
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            
+            stmt.setObject(1, id);
+            
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            handleSQLException("Error checking if reservation exists: " + id, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Maps a ResultSet row to a Reservation object.
+     *
+     * @param rs The ResultSet to map
+     * @return A Reservation object
+     * @throws SQLException if a database error occurs
      */
     private Reservation mapResultSetToReservation(ResultSet rs) throws SQLException {
         UUID reservationId = UUID.fromString(rs.getString("reservation_uuid"));
@@ -532,36 +568,99 @@ public class ReservationDAO implements GenericDAO<Reservation, UUID> {
         int studentViaId = rs.getInt("student_via_id");
         Timestamp creationTimestamp = rs.getTimestamp("creation_date");
         Date creationDate = creationTimestamp != null ? new Date(creationTimestamp.getTime()) : new Date();
-
-        // Hent tilknyttet Laptop og Student ved hjælp af deres DAOs
+        
+        // Get associated model.models.Laptop and Student using their DAOs
         Laptop laptop = laptopDAO.getById(laptopUUID);
         Student student = studentDAO.getById(studentViaId);
-
-        // Tjek om Laptop og Student blev fundet
+        
+        // Check if model.models.Laptop and Student were found
         if (laptop == null) {
-            logger.log(Level.WARNING, "Laptop med UUID " + laptopUUID + " blev ikke fundet til reservation " + reservationId);
+            logger.warning("model.models.Laptop with UUID " + laptopUUID + " not found for reservation " + reservationId);
             return null;
         }
+        
         if (student == null) {
-            logger.log(Level.WARNING, "Student med VIA ID " + studentViaId + " blev ikke fundet til reservation " + reservationId);
+            logger.warning("Student with VIA ID " + studentViaId + " not found for reservation " + reservationId);
             return null;
         }
-
-        // Opret Reservation objekt med den korrekte konstruktør
+        
+        // Create Reservation object
         return new Reservation(reservationId, student, laptop, status, creationDate);
     }
-
+    
     /**
-     * Håndterer SQLException med logging og event posting.
+     * Handles SQLException by logging and notifying observers.
      *
-     * @param message Fejlbeskeden
-     * @param e SQLException undtagelsen
+     * @param message Error message
+     * @param e SQLException that occurred
      */
     private void handleSQLException(String message, SQLException e) {
         logger.log(Level.SEVERE, message + ": " + e.getMessage(), e);
-        log.error(message + ": " + e.getMessage());
-
-        // Post database error event
-        eventBus.post(new SystemEvents.DatabaseErrorEvent(message, e.getSQLState(), e));
+        
+        // Notify observers about the error
+        setChanged();
+        notifyObservers(new DatabaseEvent(EVENT_RESERVATION_ERROR, message + ": " + e.getMessage(), e));
+    }
+    
+    /**
+     * Event class for database operations.
+     */
+    public static class DatabaseEvent {
+        private final String eventType;
+        private final Object data;
+        private final SQLException exception;
+        
+        public DatabaseEvent(String eventType, Object data) {
+            this(eventType, data, null);
+        }
+        
+        public DatabaseEvent(String eventType, Object data, SQLException exception) {
+            this.eventType = eventType;
+            this.data = data;
+            this.exception = exception;
+        }
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public Object getData() {
+            return data;
+        }
+        
+        public SQLException getException() {
+            return exception;
+        }
+    }
+    
+    /**
+     * Event class specifically for reservation status changes.
+     */
+    public static class ReservationStatusEvent extends DatabaseEvent {
+        private final ReservationStatusEnum oldStatus;
+        private final ReservationStatusEnum newStatus;
+        
+        public ReservationStatusEvent(String eventType, Object data, 
+                                     ReservationStatusEnum oldStatus, ReservationStatusEnum newStatus) {
+            super(eventType, data);
+            this.oldStatus = oldStatus;
+            this.newStatus = newStatus;
+        }
+        
+        public ReservationStatusEnum getOldStatus() {
+            return oldStatus;
+        }
+        
+        public ReservationStatusEnum getNewStatus() {
+            return newStatus;
+        }
+        
+        public boolean isCompleted() {
+            return newStatus == ReservationStatusEnum.COMPLETED;
+        }
+        
+        public boolean isCancelled() {
+            return newStatus == ReservationStatusEnum.CANCELLED;
+        }
     }
 }

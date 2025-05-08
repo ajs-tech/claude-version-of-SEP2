@@ -5,78 +5,119 @@ import model.models.Laptop;
 import model.models.LoanedState;
 import model.models.Reservation;
 import model.models.Student;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
 
-import java.beans.PropertyChangeListener;
+import java.util.Observable;
+import java.util.logging.Logger;
 
 /**
- * Factory-klasse til oprettelse af reservationer.
- * Implementerer Factory Pattern for at kapsle oprettelseslogik.
+ * Factory class for creating reservations.
+ * Implements Factory Method pattern and Observable pattern.
  */
-public class ReservationFactory implements PropertyChangeNotifier {
+public class ReservationFactory extends Observable {
+    private static final Logger logger = Logger.getLogger(ReservationFactory.class.getName());
+    
+    // Event types for observer notifications
+    public static final String EVENT_RESERVATION_CREATED = "RESERVATION_CREATED";
+    
+    // Singleton instance with lazy initialization
+    private static ReservationFactory instance;
     private final Log log;
-    private final PropertyChangeSupport changeSupport;
-
+    
     /**
-     * Opretter en ny ReservationFactory instans.
+     * Private constructor for Singleton pattern.
      */
-    public ReservationFactory() {
+    private ReservationFactory() {
         this.log = Log.getInstance();
-        this.changeSupport = new PropertyChangeSupport(this);
     }
-
+    
     /**
-     * Opretter en ny reservation med korrekt setup af afhængige objekter.
+     * Gets the singleton instance.
      *
-     * @param laptop  Laptopen der skal udlånes
-     * @param student Studenten der skal låne laptopen
-     * @return        Den oprettede reservation
+     * @return The singleton instance
+     */
+    public static synchronized ReservationFactory getInstance() {
+        if (instance == null) {
+            instance = new ReservationFactory();
+        }
+        return instance;
+    }
+    
+    /**
+     * Creates a new reservation with proper setup of dependent objects.
+     *
+     * @param laptop  The laptop to loan
+     * @param student The student borrowing the laptop
+     * @return        The created reservation
+     * @throws IllegalArgumentException if validation fails
      */
     public Reservation createReservation(Laptop laptop, Student student) {
-        // Opdater laptop tilstand
-        laptop.changeState(LoanedState.INSTANCE);
-
-        // Opdater student status
+        // Validate input
+        validateInput(laptop, student);
+        
+        // Update laptop state
+        laptop.changeState(new LoanedState());
+        
+        // Update student status
         student.setHasLaptop(true);
-
-        // Opret reservation
+        
+        // Create reservation
         Reservation reservation = new Reservation(student, laptop);
-
-        // Log oprettelsen
-        log.addToLog("Reservation oprettet med id:" + reservation.getReservationId() +
-                " >> Laptop [" + laptop.getBrand() + " " + laptop.getModel() +
-                "] tildelt til student [" + student.getName() + "]");
-
-        // Notificér om oprettelsen
-        firePropertyChange("reservationCreated", null, reservation);
-
+        
+        // Log creation
+        log.info("Reservation created with ID: " + reservation.getReservationId() +
+                " >> model.models.Laptop [" + laptop.getBrand() + " " + laptop.getModel() +
+                "] assigned to student [" + student.getName() + "]");
+        
+        // Notify observers
+        setChanged();
+        notifyObservers(new ReservationEvent(EVENT_RESERVATION_CREATED, reservation));
+        
         return reservation;
     }
-
-    // PropertyChangeNotifier implementation
-
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
+    
+    /**
+     * Validates input parameters for reservation creation.
+     *
+     * @param laptop  The laptop to check
+     * @param student The student to check
+     * @throws IllegalArgumentException if validation fails
+     */
+    private void validateInput(Laptop laptop, Student student) {
+        if (laptop == null) {
+            throw new IllegalArgumentException("model.models.Laptop cannot be null");
+        }
+        
+        if (student == null) {
+            throw new IllegalArgumentException("Student cannot be null");
+        }
+        
+        if (!laptop.isAvailable()) {
+            throw new IllegalArgumentException("model.models.Laptop is not available: " + laptop.getId());
+        }
+        
+        if (student.isHasLaptop()) {
+            throw new IllegalArgumentException("Student already has a laptop: " + student.getViaId());
+        }
     }
-
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
-
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
+    
+    /**
+     * Event class for reservation operations.
+     */
+    public static class ReservationEvent {
+        private final String eventType;
+        private final Reservation reservation;
+        
+        public ReservationEvent(String eventType, Reservation reservation) {
+            this.eventType = eventType;
+            this.reservation = reservation;
+        }
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public Reservation getReservation() {
+            return reservation;
+        }
     }
 }

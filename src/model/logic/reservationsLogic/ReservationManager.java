@@ -1,685 +1,827 @@
 package model.logic.reservationsLogic;
 
-import model.database.LaptopDAO;
-import model.database.QueueDAO;
-import model.database.ReservationDAO;
-import model.database.StudentDAO;
 import model.enums.PerformanceTypeEnum;
 import model.enums.ReservationStatusEnum;
-import model.log.Log;
 import model.models.Laptop;
-import model.models.Reservation;
-import model.models.Student;
-import model.util.PropertyChangeNotifier;
-import model.util.PropertyChangeSupport;
+import model.util.ModelObservable;
 
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Central manager for reservations-håndtering og kø-administration.
- * Implementerer Observer Pattern for at reagere på ændringer i laptops.
+ * Central manager for reservation handling and queue administration.
+ * Uses Observer pattern and threads for asynchronous operations.
  */
-public class ReservationManager implements PropertyChangeListener, PropertyChangeNotifier {
+public class ReservationManager extends Observable implements Observer {
     private static final Logger logger = Logger.getLogger(ReservationManager.class.getName());
-
-    // Collections
+    
+    // Event types for observer notifications
+    public static final String EVENT_RESERVATION_CREATED = "RESERVATION_CREATED";
+    public static final String EVENT_RESERVATION_UPDATED = "RESERVATION_UPDATED";
+    public static final String EVENT_RESERVATION_STATUS_CHANGED = "RESERVATION_STATUS_CHANGED";
+    public static final String EVENT_QUEUE_SIZE_CHANGED = "QUEUE_SIZE_CHANGED";
+    public static final String EVENT_ERROR = "ERROR";
+    
+    // Collections for in-memory state
     private final List<Reservation> activeReservations;
     private final GenericQueue highPerformanceQueue;
     private final GenericQueue lowPerformanceQueue;
-
-    // DAO-lag
+    
+    // DAO layer
     private final QueueDAO queueDAO;
     private final ReservationDAO reservationDAO;
     private final LaptopDAO laptopDAO;
     private final StudentDAO studentDAO;
-
-    // Hjælpeklasser
+    
+    // Helper classes
     private final ReservationFactory reservationFactory;
     private final Log log;
-    private final PropertyChangeSupport changeSupport;
-
+    
+    // Concurrency control
+    private final ReadWriteLock reservationsLock;
+    private final ExecutorService executor;
+    
+    // Singleton instance
+    private static volatile ReservationManager instance;
+    
     /**
-     * Opretter en ny ReservationManager instans.
+     * Private constructor for Singleton pattern.
      */
-    public ReservationManager() {
+    private ReservationManager() {
         this.activeReservations = new ArrayList<>();
         this.highPerformanceQueue = new GenericQueue(PerformanceTypeEnum.HIGH);
         this.lowPerformanceQueue = new GenericQueue(PerformanceTypeEnum.LOW);
-        this.reservationFactory = new ReservationFactory();
-
-        // Initialiser DAOs
-        this.queueDAO = new QueueDAO();
-        this.reservationDAO = new ReservationDAO();
-        this.laptopDAO = new LaptopDAO();
-        this.studentDAO = new StudentDAO();
-
-        // Initialiser log og PropertyChangeSupport
+        
+        // Initialize DAOs
+        this.queueDAO = QueueDAO.getInstance();
+        this.reservationDAO = ReservationDAO.getInstance();
+        this.laptopDAO = LaptopDAO.getInstance();
+        this.studentDAO = StudentDAO.getInstance();
+        
+        // Initialize helper classes
+        this.reservationFactory = ReservationFactory.getInstance();
         this.log = Log.getInstance();
-        this.changeSupport = new PropertyChangeSupport(this);
-
-        // Tilføj ReservationManager som listener til reservationFactory
-        this.reservationFactory.addPropertyChangeListener(this);
-
-        // Tilføj ReservationManager som listener til køer
-        this.highPerformanceQueue.addPropertyChangeListener(this);
-        this.lowPerformanceQueue.addPropertyChangeListener(this);
-
-        // Indlæs data fra databasen ved opstart
-        try {
-            loadReservationsFromDatabase();
-            loadQueuesFromDatabase();
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved indlæsning fra database ved opstart: " + e.getMessage(), e);
-            log.addToLog("Fejl ved indlæsning fra database: " + e.getMessage());
-        }
+        
+        // Initialize concurrency controls
+        this.reservationsLock = new ReentrantReadWriteLock();
+        this.executor = Executors.newFixedThreadPool(2);
+        
+        // Register as observer
+        this.reservationFactory.addObserver(this);
+        this.highPerformanceQueue.addObserver(this);
+        this.lowPerformanceQueue.addObserver(this);
+        this.reservationDAO.addObserver(this);
+        this.queueDAO.addObserver(this);
+        
+        // Load data from database at startup
+        loadFromDatabase();
     }
-
+    
     /**
-     * Indlæs aktive reservationer fra databasen ved opstart
+     * Gets the singleton instance with double-checked locking.
+     *
+     * @return The singleton instance
      */
-    private void loadReservationsFromDatabase() throws SQLException {
-        List<Reservation> dbReservations = reservationDAO.getAll();
-        int count = 0;
-
-        for (Reservation reservation : dbReservations) {
-            if (reservation.getStatus() == ReservationStatusEnum.ACTIVE) {
-                activeReservations.add(reservation);
-
-                // Tilføj lytter til reservationen
-                reservation.addPropertyChangeListener(this);
-                count++;
+    public static ReservationManager getInstance() {
+        if (instance == null) {
+            synchronized (ReservationManager.class) {
+                if (instance == null) {
+                    instance = new ReservationManager();
+                }
             }
         }
-
-        logger.info("Indlæst " + count + " aktive reservationer fra databasen");
-        log.addToLog("Indlæst " + count + " aktive reservationer fra databasen");
+        return instance;
     }
-
+    
     /**
-     * Indlæs køer fra databasen ved opstart
+     * Loads initial data from the database.
+     */
+    private void loadFromDatabase() {
+        executor.submit(() -> {
+            try {
+                loadReservationsFromDatabase();
+                loadQueuesFromDatabase();
+                
+                logger.info("Initial data loaded from database");
+            } catch (SQLException e) {
+                logger.log(Level.SEVERE, "Error loading data from database: " + e.getMessage(), e);
+                log.error("Error loading data from database: " + e.getMessage());
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error loading data from database", e));
+            }
+        });
+    }
+    
+    /**
+     * Loads active reservations from the database.
+     */
+    private void loadReservationsFromDatabase() throws SQLException {
+        List<Reservation> dbReservations = reservationDAO.getActiveReservations();
+        
+        reservationsLock.writeLock().lock();
+        try {
+            activeReservations.clear();
+            activeReservations.addAll(dbReservations);
+            
+            // Add observers to each reservation
+            for (Reservation reservation : activeReservations) {
+                reservation.addObserver(this);
+            }
+            
+            logger.info("Loaded " + dbReservations.size() + " active reservations from database");
+            log.info("Loaded " + dbReservations.size() + " active reservations from database");
+        } finally {
+            reservationsLock.writeLock().unlock();
+        }
+    }
+    
+    /**
+     * Loads queues from the database.
      */
     private void loadQueuesFromDatabase() throws SQLException {
-        // Indlæs lav-ydelses kø
+        // Load low-performance queue
         List<Student> lowPerformanceStudents = queueDAO.getStudentsInQueue(PerformanceTypeEnum.LOW);
         for (Student student : lowPerformanceStudents) {
             lowPerformanceQueue.addToQueue(student);
         }
-
-        // Indlæs høj-ydelses kø
+        
+        // Load high-performance queue
         List<Student> highPerformanceStudents = queueDAO.getStudentsInQueue(PerformanceTypeEnum.HIGH);
         for (Student student : highPerformanceStudents) {
             highPerformanceQueue.addToQueue(student);
         }
-
-        logger.info("Indlæst " + lowPerformanceStudents.size() + " studerende i lav-ydelses kø");
-        logger.info("Indlæst " + highPerformanceStudents.size() + " studerende i høj-ydelses kø");
-        log.addToLog("Indlæst køer fra databasen: " + lowPerformanceStudents.size() +
-                " i lav-ydelses kø, " + highPerformanceStudents.size() + " i høj-ydelses kø");
+        
+        logger.info("Loaded " + lowPerformanceStudents.size() + " students in low-performance queue");
+        logger.info("Loaded " + highPerformanceStudents.size() + " students in high-performance queue");
+        log.info("Loaded queues from database: " + lowPerformanceStudents.size() +
+                " in low-performance queue, " + highPerformanceStudents.size() + " in high-performance queue");
     }
-
-    // Reservations-relaterede metoder
-
+    
     /**
-     * Oprettelse af reservation med database persistering
+     * Creates a reservation with database persistence.
      *
-     * @param laptop  Laptopen der skal udlånes
-     * @param student Studenten der skal låne laptopen
-     * @return        Den oprettede reservation eller null ved fejl
+     * @param laptop  The laptop to loan
+     * @param student The student borrowing the laptop
+     * @return        The created reservation or null on error
      */
     public Reservation createReservation(Laptop laptop, Student student) {
         try {
-            // Tjek forudsætninger
+            // Check preconditions
             if (laptop == null || student == null) {
-                logger.warning("Null reference: Laptop eller Student er null");
-                log.addToLog("Fejl: Kan ikke oprette reservation med null references");
+                logger.warning("Null reference: model.models.Laptop or Student is null");
+                log.warning("Error: Cannot create reservation with null references");
                 return null;
             }
-
+            
             if (!laptop.isAvailable()) {
-                logger.warning("Laptop er ikke tilgængelig: " + laptop.getId());
-                log.addToLog("Fejl: Kan ikke oprette reservation med unavailable laptop: " + laptop.getBrand() + " " + laptop.getModel());
+                logger.warning("model.models.Laptop is not available: " + laptop.getId());
+                log.warning("Error: Cannot create reservation with unavailable laptop: " + laptop.getBrand() + " " + laptop.getModel());
                 return null;
             }
-
+            
             if (student.isHasLaptop()) {
-                logger.warning("Student har allerede en laptop: " + student.getViaId());
-                log.addToLog("Fejl: Kan ikke oprette reservation for student der allerede har laptop: " + student.getName());
+                logger.warning("Student already has a laptop: " + student.getViaId());
+                log.warning("Error: Cannot create reservation for student who already has a laptop: " + student.getName());
                 return null;
             }
-
-            // Opret reservation objekt
+            
+            // Create reservation object using factory
             Reservation reservation = reservationFactory.createReservation(laptop, student);
-
-            // Gem i databasen med transaction support
+            
+            // Save to database with transaction support
             boolean success = reservationDAO.createReservationWithTransaction(reservation);
-
+            
             if (success) {
-                // Opdater in-memory liste
-                activeReservations.add(reservation);
-
-                // Tilføj lytter til den nye reservation
-                reservation.addPropertyChangeListener(this);
-
-                // Notificér om den nye reservation
-                firePropertyChange("reservationCreated", null, reservation);
-                firePropertyChange("activeReservationsCount", activeReservations.size() - 1, activeReservations.size());
-
+                // Update in-memory list
+                reservationsLock.writeLock().lock();
+                try {
+                    activeReservations.add(reservation);
+                    
+                    // Add observer to the new reservation
+                    reservation.addObserver(this);
+                } finally {
+                    reservationsLock.writeLock().unlock();
+                }
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new ReservationEvent(EVENT_RESERVATION_CREATED, reservation));
+                
                 return reservation;
             } else {
-                logger.warning("Kunne ikke oprette reservation i databasen");
-                log.addToLog("Fejl: Kunne ikke oprette reservation i databasen");
+                logger.warning("Could not create reservation in database");
+                log.warning("Error: Could not create reservation in database");
                 return null;
             }
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved oprettelse af reservation: " + e.getMessage(), e);
-            log.addToLog("Fejl ved oprettelse af reservation: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error creating reservation: " + e.getMessage(), e);
+            log.error("Error creating reservation: " + e.getMessage());
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error creating reservation", e));
+            
+            return null;
+        } catch (IllegalArgumentException e) {
+            logger.log(Level.WARNING, "Invalid input for reservation: " + e.getMessage(), e);
+            log.warning("Error creating reservation: " + e.getMessage());
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Invalid input for reservation", e));
+            
             return null;
         }
     }
-
+    
     /**
-     * Opdaterer en reservations status med database persistering
+     * Updates a reservation status with database persistence.
      *
-     * @param reservationId Reservationens UUID
-     * @param newStatus     Den nye status
-     * @return              true hvis operationen lykkedes
+     * @param reservationId The reservation's UUID
+     * @param newStatus     The new status
+     * @return              true if the operation was successful
      */
     public boolean updateReservationStatus(UUID reservationId, ReservationStatusEnum newStatus) {
         try {
-            // Find reservationen i hukommelsen
+            // Find the reservation in memory
             Reservation reservation = findReservationById(reservationId);
-
+            
             if (reservation == null) {
-                // Hvis ikke i hukommelsen, prøv at hente fra databasen
+                // If not in memory, try to get from database
                 reservation = reservationDAO.getById(reservationId);
                 if (reservation == null) {
-                    logger.warning("Reservation ikke fundet: " + reservationId);
-                    log.addToLog("Fejl: Reservation ikke fundet: " + reservationId);
+                    logger.warning("Reservation not found: " + reservationId);
+                    log.warning("Error: Reservation not found: " + reservationId);
                     return false;
                 }
             }
-
-            // Opdater status
+            
+            // Update status
             ReservationStatusEnum oldStatus = reservation.getStatus();
             reservation.changeStatus(newStatus);
-
-            // Opdater i databasen med transaktionssupport
+            
+            // Update in database with transaction support
             boolean success = reservationDAO.updateStatusWithTransaction(reservation);
-
+            
             if (success) {
-                // Fjern fra in-memory listen hvis cancelled/completed
+                // Remove from in-memory list if cancelled/completed
                 if (newStatus == ReservationStatusEnum.CANCELLED ||
                         newStatus == ReservationStatusEnum.COMPLETED) {
-
-                    int oldSize = activeReservations.size();
-                    activeReservations.removeIf(r -> r.getReservationId().equals(reservationId));
-
-                    // Notificér om ændringen i aktive reservationer
-                    if (oldSize != activeReservations.size()) {
-                        firePropertyChange("activeReservationsCount", oldSize, activeReservations.size());
+                    
+                    reservationsLock.writeLock().lock();
+                    try {
+                        activeReservations.removeIf(r -> r.getReservationId().equals(reservationId));
+                    } finally {
+                        reservationsLock.writeLock().unlock();
                     }
                 }
-
-                log.addToLog("Reservation " + reservationId + " opdateret til status: " + newStatus);
-                firePropertyChange("reservationStatusUpdated", oldStatus, newStatus);
+                
+                log.info("Reservation " + reservationId + " updated to status: " + newStatus);
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED, 
+                        reservation, oldStatus, newStatus));
+                
                 return true;
             } else {
-                logger.warning("Kunne ikke opdatere reservation i database");
-                log.addToLog("Fejl: Kunne ikke opdatere reservation i database");
+                logger.warning("Could not update reservation in database");
+                log.warning("Error: Could not update reservation in database");
                 return false;
             }
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved opdatering af reservation: " + e.getMessage(), e);
-            log.addToLog("Fejl ved opdatering af reservation: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error updating reservation: " + e.getMessage(), e);
+            log.error("Error updating reservation: " + e.getMessage());
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error updating reservation", e));
+            
             return false;
         }
     }
-
+    
     /**
-     * Finder en reservation baseret på ID
+     * Finds a reservation by ID in the in-memory list.
      *
-     * @param reservationId Reservationens UUID
-     * @return              Reservation hvis fundet, ellers null
+     * @param reservationId The reservation's UUID
+     * @return              The reservation or null if not found
      */
     private Reservation findReservationById(UUID reservationId) {
-        for (Reservation r : activeReservations) {
-            if (r.getReservationId().equals(reservationId)) {
-                return r;
+        reservationsLock.readLock().lock();
+        try {
+            for (Reservation r : activeReservations) {
+                if (r.getReservationId().equals(reservationId)) {
+                    return r;
+                }
             }
+            return null;
+        } finally {
+            reservationsLock.readLock().unlock();
         }
-        return null;
     }
-
-    // Kø-relaterede metoder
-
+    
     /**
-     * Tilføj student til høj-ydelses kø med database persistering
+     * Adds a student to the high-performance queue with database persistence.
      *
-     * @param student Studenten der skal tilføjes til køen
+     * @param student The student to add
      */
     public void addToHighPerformanceQueue(Student student) {
-        try {
-            // Tjek først om studenten allerede har en laptop eller er i en anden kø
-            if (student.isHasLaptop()) {
-                logger.info("Student " + student.getName() + " har allerede en laptop, tilføjes ikke til kø");
-                log.addToLog("Student " + student.getName() + " har allerede en laptop, tilføjes ikke til kø");
-                return;
+        executor.submit(() -> {
+            try {
+                // Check if student already has a laptop or is in a queue
+                if (student.isHasLaptop()) {
+                    logger.info("Student " + student.getName() + " already has a laptop, not adding to queue");
+                    log.info("Student " + student.getName() + " already has a laptop, not adding to queue");
+                    return;
+                }
+                
+                if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
+                    logger.info("Student " + student.getName() + " is already in a queue");
+                    log.info("Student " + student.getName() + " is already in a queue");
+                    return;
+                }
+                
+                // Check if student's performance need matches the queue
+                if (student.getPerformanceNeeded() != PerformanceTypeEnum.HIGH) {
+                    logger.info("Student " + student.getName() + " does not need high performance, redirecting");
+                    addToLowPerformanceQueue(student);
+                    return;
+                }
+                
+                // Check if there's an available laptop with the right performance level
+                List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.HIGH);
+                if (!availableLaptops.isEmpty()) {
+                    // There's an available laptop, assign it directly instead of adding to queue
+                    Laptop laptop = availableLaptops.get(0);
+                    createReservation(laptop, student);
+                    logger.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
+                    log.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
+                    return;
+                }
+                
+                // Add to database queue
+                boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.HIGH);
+                
+                if (added) {
+                    // Add to in-memory queue
+                    highPerformanceQueue.addToQueue(student);
+                    log.info("Student " + student.getName() + " added to high-performance queue");
+                } else {
+                    logger.warning("Could not add student to queue in database");
+                    log.warning("Error: Could not add student to queue in database");
+                }
+            } catch (SQLException e) {
+                logger.log(Level.SEVERE, "Error adding to high-performance queue: " + e.getMessage(), e);
+                log.error("Error adding to high-performance queue: " + e.getMessage());
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error adding to high-performance queue", e));
             }
-
-            if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
-                logger.info("Student " + student.getName() + " er allerede i en kø");
-                log.addToLog("Student " + student.getName() + " er allerede i en kø");
-                return;
-            }
-
-            // Tjek om studentens ydelsesbehov passer til køen
-            if (student.getPerformanceNeeded() != PerformanceTypeEnum.HIGH) {
-                logger.info("Student " + student.getName() + " har ikke behov for høj ydelse, omdirigerer");
-                addToLowPerformanceQueue(student);
-                return;
-            }
-
-            // Tjek om der er en tilgængelig laptop med det rette ydelsesniveau
-            List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.HIGH);
-            if (!availableLaptops.isEmpty()) {
-                // Der er en tilgængelig laptop, tildel den med det samme i stedet for at tilføje til kø
-                Laptop laptop = availableLaptops.get(0);
-                createReservation(laptop, student);
-                logger.info("Student " + student.getName() + " fik tildelt laptop direkte i stedet for at blive sat i kø");
-                log.addToLog("Student " + student.getName() + " fik tildelt laptop direkte i stedet for at blive sat i kø");
-                return;
-            }
-
-            // Tilføj til database kø
-            boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.HIGH);
-
-            if (added) {
-                // Tilføj til in-memory kø
-                highPerformanceQueue.addToQueue(student);
-                log.addToLog("Student " + student.getName() + " tilføjet til høj-ydelses kø");
-
-                // Notificér om ændringen i køen
-                firePropertyChange("highQueueSize", highPerformanceQueue.getQueueSize() - 1, highPerformanceQueue.getQueueSize());
-            } else {
-                logger.warning("Kunne ikke tilføje student til kø i databasen");
-                log.addToLog("Fejl: Kunne ikke tilføje student til kø i databasen");
-            }
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved tilføjelse til høj-ydelses kø: " + e.getMessage(), e);
-            log.addToLog("Fejl ved tilføjelse til høj-ydelses kø: " + e.getMessage());
-        }
+        });
     }
-
+    
     /**
-     * Tilføj student til lav-ydelses kø med database persistering
+     * Adds a student to the low-performance queue with database persistence.
      *
-     * @param student Studenten der skal tilføjes til køen
+     * @param student The student to add
      */
     public void addToLowPerformanceQueue(Student student) {
-        try {
-            // Tjek først om studenten allerede har en laptop eller er i en anden kø
-            if (student.isHasLaptop()) {
-                logger.info("Student " + student.getName() + " har allerede en laptop, tilføjes ikke til kø");
-                log.addToLog("Student " + student.getName() + " har allerede en laptop, tilføjes ikke til kø");
-                return;
+        executor.submit(() -> {
+            try {
+                // Check if student already has a laptop or is in a queue
+                if (student.isHasLaptop()) {
+                    logger.info("Student " + student.getName() + " already has a laptop, not adding to queue");
+                    log.info("Student " + student.getName() + " already has a laptop, not adding to queue");
+                    return;
+                }
+                
+                if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
+                    logger.info("Student " + student.getName() + " is already in a queue");
+                    log.info("Student " + student.getName() + " is already in a queue");
+                    return;
+                }
+                
+                // Check if student's performance need matches the queue
+                if (student.getPerformanceNeeded() != PerformanceTypeEnum.LOW) {
+                    logger.info("Student " + student.getName() + " needs high performance, redirecting");
+                    addToHighPerformanceQueue(student);
+                    return;
+                }
+                
+                // Check if there's an available laptop with the right performance level
+                List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.LOW);
+                if (!availableLaptops.isEmpty()) {
+                    // There's an available laptop, assign it directly instead of adding to queue
+                    Laptop laptop = availableLaptops.get(0);
+                    createReservation(laptop, student);
+                    logger.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
+                    log.info("Student " + student.getName() + " was assigned a laptop directly instead of being added to queue");
+                    return;
+                }
+                
+                // Add to database queue
+                boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.LOW);
+                
+                if (added) {
+                    // Add to in-memory queue
+                    lowPerformanceQueue.addToQueue(student);
+                    log.info("Student " + student.getName() + " added to low-performance queue");
+                } else {
+                    logger.warning("Could not add student to queue in database");
+                    log.warning("Error: Could not add student to queue in database");
+                }
+            } catch (SQLException e) {
+                logger.log(Level.SEVERE, "Error adding to low-performance queue: " + e.getMessage(), e);
+                log.error("Error adding to low-performance queue: " + e.getMessage());
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error adding to low-performance queue", e));
             }
-
-            if (queueDAO.isStudentInAnyQueue(student.getViaId())) {
-                logger.info("Student " + student.getName() + " er allerede i en kø");
-                log.addToLog("Student " + student.getName() + " er allerede i en kø");
-                return;
-            }
-
-            // Tjek om studentens ydelsesbehov passer til køen
-            if (student.getPerformanceNeeded() != PerformanceTypeEnum.LOW) {
-                logger.info("Student " + student.getName() + " har behov for høj ydelse, omdirigerer");
-                addToHighPerformanceQueue(student);
-                return;
-            }
-
-            // Tjek om der er en tilgængelig laptop med det rette ydelsesniveau
-            List<Laptop> availableLaptops = laptopDAO.getAvailableLaptopsByPerformance(PerformanceTypeEnum.LOW);
-            if (!availableLaptops.isEmpty()) {
-                // Der er en tilgængelig laptop, tildel den med det samme i stedet for at tilføje til kø
-                Laptop laptop = availableLaptops.get(0);
-                createReservation(laptop, student);
-                logger.info("Student " + student.getName() + " fik tildelt laptop direkte i stedet for at blive sat i kø");
-                log.addToLog("Student " + student.getName() + " fik tildelt laptop direkte i stedet for at blive sat i kø");
-                return;
-            }
-
-            // Tilføj til database kø
-            boolean added = queueDAO.addToQueue(student, PerformanceTypeEnum.LOW);
-
-            if (added) {
-                // Tilføj til in-memory kø
-                lowPerformanceQueue.addToQueue(student);
-                log.addToLog("Student " + student.getName() + " tilføjet til lav-ydelses kø");
-
-                // Notificér om ændringen i køen
-                firePropertyChange("lowQueueSize", lowPerformanceQueue.getQueueSize() - 1, lowPerformanceQueue.getQueueSize());
-            } else {
-                logger.warning("Kunne ikke tilføje student til kø i databasen");
-                log.addToLog("Fejl: Kunne ikke tilføje student til kø i databasen");
-            }
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved tilføjelse til lav-ydelses kø: " + e.getMessage(), e);
-            log.addToLog("Fejl ved tilføjelse til lav-ydelses kø: " + e.getMessage());
-        }
+        });
     }
-
+    
     /**
-     * Fjerner en student fra kø baseret på VIA ID og ydelsestype
+     * Removes a student from a queue.
      *
-     * @param viaId          Studentens VIA ID
-     * @param performanceType Ydelsestypen for køen (HIGH/LOW)
-     * @return               true hvis studenten blev fjernet, ellers false
+     * @param viaId           The student's VIA ID
+     * @param performanceType The performance type queue
+     * @return                true if removal was successful
      */
     public boolean removeFromQueue(int viaId, PerformanceTypeEnum performanceType) {
         try {
-            // Fjern fra database
+            // Remove from database
             boolean removed = queueDAO.removeFromQueue(viaId, performanceType);
-
+            
             if (removed) {
-                // Fjern fra in-memory kø
+                // Remove from in-memory queue
                 GenericQueue queue = (performanceType == PerformanceTypeEnum.HIGH) ?
                         highPerformanceQueue : lowPerformanceQueue;
-
-                int oldSize = queue.getQueueSize();
-                boolean inMemoryRemoved = queue.removeStudentById(viaId);
-
-                if (inMemoryRemoved) {
-                    // Notificér om ændringen
-                    String propertyName = (performanceType == PerformanceTypeEnum.HIGH) ?
-                            "highQueueSize" : "lowQueueSize";
-
-                    firePropertyChange(propertyName, oldSize, queue.getQueueSize());
-                    return true;
-                }
+                
+                queue.removeStudentById(viaId);
+                return true;
             }
-
+            
             return removed;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Fejl ved fjernelse fra kø: " + e.getMessage(), e);
-            log.addToLog("Fejl ved fjernelse fra kø: " + e.getMessage());
+            logger.log(Level.SEVERE, "Error removing from queue: " + e.getMessage(), e);
+            log.error("Error removing from queue: " + e.getMessage());
+            
+            // Notify observers
+            setChanged();
+            notifyObservers(new ErrorEvent(EVENT_ERROR, "Error removing from queue", e));
+            
             return false;
         }
     }
-
+    
     /**
-     * Tildeler automatisk den næste student i køen til en ledig laptop
+     * Assigns the next student in queue to an available laptop.
      *
-     * @param laptop Laptop der er blevet ledig
-     * @return       Den oprettede reservation eller null hvis ingen studerende i køen
+     * @param laptop The laptop that has become available
+     * @return       The created reservation or null if no students in queue
      */
-    private Reservation assignNextStudentFromQueue(Laptop laptop) {
+    public Reservation assignNextStudentFromQueue(Laptop laptop) {
         PerformanceTypeEnum laptopType = laptop.getPerformanceType();
         GenericQueue queue;
         String queueTypeName;
-
+        
         if (laptopType == PerformanceTypeEnum.HIGH) {
             queue = highPerformanceQueue;
-            queueTypeName = "høj-ydelses";
+            queueTypeName = "high-performance";
         } else {
             queue = lowPerformanceQueue;
-            queueTypeName = "lav-ydelses";
+            queueTypeName = "low-performance";
         }
-
+        
         if (queue.getQueueSize() > 0) {
             try {
-                // Hent næste student fra databasen
+                // Get next student from database
                 Student nextStudent = queueDAO.getAndRemoveNextInQueue(laptopType);
-
+                
                 if (nextStudent != null) {
-                    // Opdater in-memory kø
+                    // Update in-memory queue
                     queue.getAndRemoveNextInLine();
-
-                    // Opret reservation
+                    
+                    // Create reservation
                     Reservation reservation = createReservation(laptop, nextStudent);
-
+                    
                     if (reservation != null) {
-                        log.addToLog("Automatisk tildeling: Student " + nextStudent.getName() +
-                                " tildelt laptop " + laptop.getBrand() + " " + laptop.getModel() +
-                                " fra " + queueTypeName + " kø");
-
+                        log.info("Automatic assignment: Student " + nextStudent.getName() +
+                                " assigned laptop " + laptop.getBrand() + " " + laptop.getModel() +
+                                " from " + queueTypeName + " queue");
+                        
                         return reservation;
                     }
                 }
             } catch (SQLException e) {
-                logger.log(Level.SEVERE, "Fejl ved automatisk tildeling fra kø: " + e.getMessage(), e);
-                log.addToLog("Fejl ved automatisk tildeling fra kø: " + e.getMessage());
+                logger.log(Level.SEVERE, "Error during automatic assignment from queue: " + e.getMessage(), e);
+                log.error("Error during automatic assignment from queue: " + e.getMessage());
+                
+                // Notify observers
+                setChanged();
+                notifyObservers(new ErrorEvent(EVENT_ERROR, "Error during automatic assignment from queue", e));
             }
         }
-
+        
         return null;
     }
-
-    // Metoder til at hente kø-information
-
+    
     /**
-     * Returnerer antal studerende i høj-ydelses køen
-     *
-     * @return Antal studerende i køen
+     * Handles events from observed objects.
      */
-    public int getHighNeedingQueueSize() {
+    @Override
+    public void update(Observable o, Object arg) {
+        // Handle events from ReservationFactory
+        if (o instanceof ReservationFactory && arg instanceof ReservationFactory.ReservationEvent) {
+            ReservationFactory.ReservationEvent event = (ReservationFactory.ReservationEvent) arg;
+            if (ReservationFactory.EVENT_RESERVATION_CREATED.equals(event.getEventType())) {
+                // Forward event
+                setChanged();
+                notifyObservers(new ReservationEvent(EVENT_RESERVATION_CREATED, event.getReservation()));
+            }
+        }
+        // Handle events from model.logic.reservationsLogic.GenericQueue
+        else if (o instanceof GenericQueue && arg instanceof GenericQueue.QueueSizeEvent) {
+            GenericQueue.QueueSizeEvent event = (GenericQueue.QueueSizeEvent) arg;
+            if (GenericQueue.EVENT_QUEUE_SIZE_CHANGED.equals(event.getEventType())) {
+                // Forward event with queue type info
+                PerformanceTypeEnum queueType = ((GenericQueue) o).getPerformanceType();
+                setChanged();
+                notifyObservers(new QueueSizeEvent(EVENT_QUEUE_SIZE_CHANGED, 
+                        queueType, event.getOldSize(), event.getNewSize()));
+            }
+        }
+        // Handle events from Reservation objects
+        else if (o instanceof Reservation) {
+            if (arg instanceof ModelObservable.PropertyChangeInfo) {
+                ModelObservable.PropertyChangeInfo event = (ModelObservable.PropertyChangeInfo) arg;
+                // If status changed
+                if ("status".equals(event.getPropertyName())) {
+                    Reservation reservation = (Reservation) o;
+                    ReservationStatusEnum oldStatus = (ReservationStatusEnum) event.getOldValue();
+                    ReservationStatusEnum newStatus = (ReservationStatusEnum) event.getNewValue();
+                    
+                    // Forward event
+                    setChanged();
+                    notifyObservers(new StatusChangedEvent(EVENT_RESERVATION_STATUS_CHANGED, 
+                            reservation, oldStatus, newStatus));
+                    
+                    // Handle completed or cancelled reservations
+                    if (oldStatus == ReservationStatusEnum.ACTIVE && 
+                            (newStatus == ReservationStatusEnum.COMPLETED || 
+                             newStatus == ReservationStatusEnum.CANCELLED)) {
+                        
+                        // Remove from active reservations
+                        reservationsLock.writeLock().lock();
+                        try {
+                            activeReservations.remove(reservation);
+                        } finally {
+                            reservationsLock.writeLock().unlock();
+                        }
+                        
+                        // Check if there are students in the queue for this laptop type
+                        assignNextStudentFromQueue(reservation.getLaptop());
+                    }
+                }
+            }
+        }
+        // Handle events from DAO classes
+        else if ((o instanceof ReservationDAO && arg instanceof ReservationDAO.DatabaseEvent) ||
+                 (o instanceof QueueDAO && arg instanceof QueueDAO.DatabaseEvent)) {
+            // Handle error events
+            if (arg instanceof ReservationDAO.DatabaseEvent) {
+                ReservationDAO.DatabaseEvent event = (ReservationDAO.DatabaseEvent) arg;
+                if (ReservationDAO.EVENT_RESERVATION_ERROR.equals(event.getEventType())) {
+                    // Forward error event
+                    setChanged();
+                    notifyObservers(new ErrorEvent(EVENT_ERROR, event.getData().toString(), event.getException()));
+                }
+            } else if (arg instanceof QueueDAO.DatabaseEvent) {
+                QueueDAO.DatabaseEvent event = (QueueDAO.DatabaseEvent) arg;
+                if (QueueDAO.EVENT_QUEUE_ERROR.equals(event.getEventType())) {
+                    // Forward error event
+                    setChanged();
+                    notifyObservers(new ErrorEvent(EVENT_ERROR, event.getData().toString(), event.getException()));
+                }
+            }
+        }
+    }
+    
+    /**
+     * Gets the number of active reservations.
+     *
+     * @return Number of active reservations
+     */
+    public int getActiveReservationsCount() {
+        reservationsLock.readLock().lock();
+        try {
+            return activeReservations.size();
+        } finally {
+            reservationsLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Gets all active reservations.
+     *
+     * @return List of active reservations
+     */
+    public List<Reservation> getAllActiveReservations() {
+        reservationsLock.readLock().lock();
+        try {
+            return new ArrayList<>(activeReservations);
+        } finally {
+            reservationsLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Gets the size of the high-performance queue.
+     *
+     * @return Number of students in high-performance queue
+     */
+    public int getHighPerformanceQueueSize() {
         try {
             return queueDAO.getQueueSize(PerformanceTypeEnum.HIGH);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af høj-ydelses kø størrelse: " + e.getMessage(), e);
-            // Returner in-memory størrelse som fallback
+            logger.log(Level.WARNING, "Error getting high-performance queue size: " + e.getMessage(), e);
+            // Fall back to in-memory queue size
             return highPerformanceQueue.getQueueSize();
         }
     }
-
+    
     /**
-     * Returnerer antal studerende i lav-ydelses køen
+     * Gets the size of the low-performance queue.
      *
-     * @return Antal studerende i køen
+     * @return Number of students in low-performance queue
      */
-    public int getLowNeedingQueueSize() {
+    public int getLowPerformanceQueueSize() {
         try {
             return queueDAO.getQueueSize(PerformanceTypeEnum.LOW);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af lav-ydelses kø størrelse: " + e.getMessage(), e);
-            // Returner in-memory størrelse som fallback
+            logger.log(Level.WARNING, "Error getting low-performance queue size: " + e.getMessage(), e);
+            // Fall back to in-memory queue size
             return lowPerformanceQueue.getQueueSize();
         }
     }
-
+    
     /**
-     * Returnerer liste af studerende i høj-ydelses køen
+     * Gets students in the high-performance queue.
      *
-     * @return Liste af studerende i køen
+     * @return List of students in high-performance queue
      */
     public List<Student> getStudentsInHighPerformanceQueue() {
         try {
             return queueDAO.getStudentsInQueue(PerformanceTypeEnum.HIGH);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af studerende i høj-ydelses kø: " + e.getMessage(), e);
-            // Returner in-memory liste som fallback
+            logger.log(Level.WARNING, "Error getting students in high-performance queue: " + e.getMessage(), e);
+            // Fall back to in-memory queue
             return highPerformanceQueue.getAllStudentsInQueue();
         }
     }
-
+    
     /**
-     * Returnerer liste af studerende i lav-ydelses køen
+     * Gets students in the low-performance queue.
      *
-     * @return Liste af studerende i køen
+     * @return List of students in low-performance queue
      */
     public List<Student> getStudentsInLowPerformanceQueue() {
         try {
             return queueDAO.getStudentsInQueue(PerformanceTypeEnum.LOW);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af studerende i lav-ydelses kø: " + e.getMessage(), e);
-            // Returner in-memory liste som fallback
+            logger.log(Level.WARNING, "Error getting students in low-performance queue: " + e.getMessage(), e);
+            // Fall back to in-memory queue
             return lowPerformanceQueue.getAllStudentsInQueue();
         }
     }
-
-    // Metoder til at hente information om reservationer
-
+    
     /**
-     * Returnerer det totale antal reservationer i systemet
-     *
-     * @return Antal reservationer
+     * Shutdown the manager and release resources.
      */
-    public int getAmountOfReservationsToDate() {
-        try {
-            return reservationDAO.getAll().size();
-        } catch (SQLException e) {
-            logger.log(Level.WARNING, "Fejl ved hentning af alle reservationer: " + e.getMessage(), e);
-            // Returner in-memory størrelse som fallback
-            return activeReservations.size();
-        }
+    public void shutdown() {
+        // Remove observers
+        reservationFactory.deleteObserver(this);
+        highPerformanceQueue.deleteObserver(this);
+        lowPerformanceQueue.deleteObserver(this);
+        reservationDAO.deleteObserver(this);
+        queueDAO.deleteObserver(this);
+        
+        // Shutdown executor
+        executor.shutdown();
     }
-
+    
     /**
-     * Returnerer antal aktive reservationer
-     *
-     * @return Antal aktive reservationer
+     * Event class for reservation operations.
      */
-    public int getAmountOfActiveReservations() {
-        return activeReservations.size();
+    public static class ReservationEvent {
+        private final String eventType;
+        private final Reservation reservation;
+        
+        public ReservationEvent(String eventType, Reservation reservation) {
+            this.eventType = eventType;
+            this.reservation = reservation;
+        }
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public Reservation getReservation() {
+            return reservation;
+        }
     }
-
+    
     /**
-     * Returnerer liste af alle aktive reservationer
-     *
-     * @return Liste af aktive reservationer
+     * Event class for reservation status changes.
      */
-    public ArrayList<Reservation> getAllActiveReservations() {
-        return new ArrayList<>(activeReservations);
+    public static class StatusChangedEvent extends ReservationEvent {
+        private final ReservationStatusEnum oldStatus;
+        private final ReservationStatusEnum newStatus;
+        
+        public StatusChangedEvent(String eventType, Reservation reservation, 
+                                 ReservationStatusEnum oldStatus, ReservationStatusEnum newStatus) {
+            super(eventType, reservation);
+            this.oldStatus = oldStatus;
+            this.newStatus = newStatus;
+        }
+        
+        public ReservationStatusEnum getOldStatus() {
+            return oldStatus;
+        }
+        
+        public ReservationStatusEnum getNewStatus() {
+            return newStatus;
+        }
     }
-
+    
     /**
-     * Returnerer den sidst tilføjede reservation
-     *
-     * @return Seneste reservation eller null hvis ingen findes
+     * Event class for queue size changes.
      */
-    public Reservation getLastReservationAdded() {
-        if (activeReservations.isEmpty()) {
-            return null;
+    public static class QueueSizeEvent {
+        private final String eventType;
+        private final PerformanceTypeEnum queueType;
+        private final int oldSize;
+        private final int newSize;
+        
+        public QueueSizeEvent(String eventType, PerformanceTypeEnum queueType, int oldSize, int newSize) {
+            this.eventType = eventType;
+            this.queueType = queueType;
+            this.oldSize = oldSize;
+            this.newSize = newSize;
         }
-        return activeReservations.get(activeReservations.size() - 1);
+        
+        public String getEventType() {
+            return eventType;
+        }
+        
+        public PerformanceTypeEnum getQueueType() {
+            return queueType;
+        }
+        
+        public int getOldSize() {
+            return oldSize;
+        }
+        
+        public int getNewSize() {
+            return newSize;
+        }
     }
-
-    // Observer mønster implementation - PropertyChangeListener
-
-    @Override
-    public void propertyChange(PropertyChangeEvent evt) {
-        // Håndter events fra laptops
-        if (evt.getSource() instanceof Laptop) {
-            handleLaptopEvent(evt);
-        }
-        // Håndter events fra reservationer
-        else if (evt.getSource() instanceof Reservation) {
-            handleReservationEvent(evt);
-        }
-        // Håndter events fra køer
-        else if (evt.getSource() instanceof GenericQueue) {
-            handleQueueEvent(evt);
-        }
-        // Håndter events fra ReservationFactory
-        else if (evt.getSource() instanceof ReservationFactory) {
-            handleFactoryEvent(evt);
-        }
-    }
-
+    
     /**
-     * Håndterer events fra Laptop objekter
+     * Event class for errors.
      */
-    private void handleLaptopEvent(PropertyChangeEvent evt) {
-        // Reagér på at en laptop bliver tilgængelig
-        if ("available".equals(evt.getPropertyName()) && (boolean) evt.getNewValue()) {
-            Laptop laptop = (Laptop) evt.getSource();
-            logger.info("Laptop " + laptop.getId() + " er blevet tilgængelig, tjekker køer");
-            log.addToLog("Laptop " + laptop.getBrand() + " " + laptop.getModel() + " er blevet tilgængelig");
-
-            try {
-                // Opdater laptop tilstand i databasen
-                laptopDAO.updateState(laptop);
-
-                // Automatisk tildel laptop til næste student i køen hvis muligt
-                assignNextStudentFromQueue(laptop);
-            } catch (SQLException e) {
-                logger.log(Level.SEVERE, "Fejl ved håndtering af tilgængelig laptop: " + e.getMessage(), e);
-                log.addToLog("Fejl ved håndtering af tilgængelig laptop: " + e.getMessage());
-            }
+    public static class ErrorEvent {
+        private final String eventType;
+        private final String message;
+        private final Exception exception;
+        
+        public ErrorEvent(String eventType, String message, Exception exception) {
+            this.eventType = eventType;
+            this.message = message;
+            this.exception = exception;
         }
-    }
-
-    /**
-     * Håndterer events fra Reservation objekter
-     */
-    private void handleReservationEvent(PropertyChangeEvent evt) {
-        // Reagér på at en reservation ændrer status
-        if ("status".equals(evt.getPropertyName())) {
-            Reservation reservation = (Reservation) evt.getSource();
-            ReservationStatusEnum newStatus = (ReservationStatusEnum) evt.getNewValue();
-
-            if (newStatus == ReservationStatusEnum.COMPLETED || newStatus == ReservationStatusEnum.CANCELLED) {
-                // Fjern fra aktive reservationer-listen
-                activeReservations.remove(reservation);
-
-                // Notificér om ændringen
-                firePropertyChange("activeReservationsCount", activeReservations.size() + 1, activeReservations.size());
-            }
+        
+        public String getEventType() {
+            return eventType;
         }
-    }
-
-    /**
-     * Håndterer events fra GenericQueue objekter
-     */
-    private void handleQueueEvent(PropertyChangeEvent evt) {
-        GenericQueue queue = (GenericQueue) evt.getSource();
-
-        // Propagér relevante kø-events
-        if ("queueSize".equals(evt.getPropertyName())) {
-            String propertyName = (queue.getPerformanceType() == PerformanceTypeEnum.HIGH) ?
-                    "highQueueSize" : "lowQueueSize";
-
-            firePropertyChange(propertyName, evt.getOldValue(), evt.getNewValue());
+        
+        public String getMessage() {
+            return message;
         }
-    }
-
-    /**
-     * Håndterer events fra ReservationFactory
-     */
-    private void handleFactoryEvent(PropertyChangeEvent evt) {
-        // Propagér relevante factory-events
-        if ("reservationCreated".equals(evt.getPropertyName())) {
-            firePropertyChange(evt.getPropertyName(), evt.getOldValue(), evt.getNewValue());
+        
+        public Exception getException() {
+            return exception;
         }
-    }
-
-    // PropertyChangeNotifier implementation
-
-    @Override
-    public void addPropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(listener);
-    }
-
-    @Override
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-
-    @Override
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        changeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-
-    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
-        changeSupport.firePropertyChange(propertyName, oldValue, newValue);
     }
 }

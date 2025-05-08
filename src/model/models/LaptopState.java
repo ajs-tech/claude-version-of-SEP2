@@ -1,23 +1,23 @@
 package model.models;
 
 /**
- * Interface for State Pattern anvendt på Laptop.
- * Definerer adfærd for forskellige tilstande en laptop kan være i.
+ * Interface for State Pattern applied to model.models.Laptop.
+ * Defines behavior for different states a laptop can be in.
  */
 public interface LaptopState {
 
     /**
-     * Håndterer klik/state-ændring på en laptop.
-     * Implementeres specifikt for hver konkret state.
+     * Handles click/state change on a laptop.
+     * Implemented specifically for each concrete state.
      *
-     * @param laptop Laptop-objektet hvis state skal ændres
+     * @param laptop model.models.Laptop object whose state should be changed
      */
     void click(Laptop laptop);
 
     /**
-     * Returnerer en tekstuel beskrivelse af tilstanden.
+     * Returns a user-friendly description of the state.
      *
-     * @return Læsevenlig beskrivelse af tilstanden
+     * @return User-friendly description of the state
      */
     String getDisplayName();
 }
